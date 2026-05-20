@@ -1,4 +1,4 @@
-import { runtimeStatus, generateText } from '@dhruvaaignited/ai-connectors';
+import { runtimeStatus, generateText } from '@ignitedaibusiness/ai-connectors';
 
 console.log(await runtimeStatus());
 

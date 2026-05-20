@@ -1,5 +1,5 @@
 {
-  "name": "@dhruvaaignited/ai-connectors",
+  "name": "@ignitedaibusiness/ai-connectors",
   "version": "0.1.0",
   "description": "Multi-provider AI connector package for Codex, Claude, Gemini, and Grok.",
   "type": "module",
