@@ -1,6 +1,7 @@
 node_modules/
 dist/
 plan.md
+npm_recovery_codes.txt
 .env
 .env.*
 .hru-ai/

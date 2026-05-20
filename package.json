@@ -24,7 +24,7 @@
     }
   },
   "bin": {
-    "hru-ai": "./dist/hru-ai.js"
+    "hru-ai": "dist/hru-ai.js"
   },
   "files": [
     "dist",
