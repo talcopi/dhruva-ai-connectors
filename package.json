@@ -1,0 +1,74 @@
+{
+  "name": "@dhruva/ai-connectors",
+  "version": "0.1.0",
+  "description": "Multi-provider AI connector package for Codex, Claude, Gemini, and Grok.",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./next": {
+      "types": "./dist/adapters/next.d.ts",
+      "import": "./dist/adapters/next.js",
+      "require": "./dist/adapters/next.cjs"
+    },
+    "./grok": {
+      "types": "./dist/grok/index.d.ts",
+      "import": "./dist/grok/index.js",
+      "require": "./dist/grok/index.cjs"
+    }
+  },
+  "bin": {
+    "hru-ai": "./dist/hru-ai.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "pack:check": "npm pack --dry-run"
+  },
+  "keywords": [
+    "ai",
+    "codex",
+    "claude",
+    "gemini",
+    "grok",
+    "xai",
+    "oauth",
+    "cli"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-code": "^2.1.143",
+    "@google/gemini-cli": "^0.42.0",
+    "@openai/codex": "^0.130.0",
+    "better-sqlite3": "^12.10.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^3.0.0"
+  }
+}
