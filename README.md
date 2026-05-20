@@ -1,4 +1,4 @@
-# @dhruva/ai-connectors
+# @dhruvaaignited/ai-connectors
 
 Short description: OAuth-first multi-provider AI connector for Node.js and Next.js apps.
 
@@ -7,7 +7,7 @@ Description: Connect Codex, Claude Code, Gemini CLI, and Grok with one OAuth-fir
 ## 0. Install
 
 ```bash
-npm i @dhruva/ai-connectors
+npm i @dhruvaaignited/ai-connectors
 ```
 
 This package targets Node.js `>=20`. Do not import it directly inside React browser components, because provider sign-in and CLI access are server-side concerns. React should call your own Node.js or Next.js API route, and that route should call this package.
@@ -36,7 +36,7 @@ Sign-in summary:
 Codex, Claude, Gemini, and Grok handle browser sign-in inside their own CLIs. This package does not capture raw callback codes. The app creates a login session, shows the command/instructions to the user, and then checks whether the CLI sign-in has completed.
 
 ```js
-import { connectProvider, getLoginStatus } from '@dhruva/ai-connectors';
+import { connectProvider, getLoginStatus } from '@dhruvaaignited/ai-connectors';
 
 const session = await connectProvider('gemini', {
   authKind: 'cli_oauth',
@@ -108,7 +108,7 @@ async function waitForConnection(provider, sessionId) {
 For local terminal tools, you can let the package run the provider login command interactively.
 
 ```js
-import { createAiConnectors } from '@dhruva/ai-connectors';
+import { createAiConnectors } from '@dhruvaaignited/ai-connectors';
 
 const ai = createAiConnectors();
 
@@ -130,7 +130,7 @@ import {
   getLoginStatus,
   runtimeStatus,
   setDefaultProvider,
-} from '@dhruva/ai-connectors';
+} from '@dhruvaaignited/ai-connectors';
 
 console.log(await runtimeStatus());
 
@@ -172,7 +172,7 @@ There is no separate `setModel()` function. The model is selected with the `mode
 Use this pattern when the user selects both the provider and model from your UI:
 
 ```js
-import { generateText } from '@dhruva/ai-connectors';
+import { generateText } from '@dhruvaaignited/ai-connectors';
 
 async function askSelectedAi({ provider, model, prompt }) {
   const result = await generateText({
@@ -329,7 +329,7 @@ Per-call `model` wins over the server default. If `model` is not passed, the pac
 `app/api/ai/route.js`
 
 ```js
-import { createNextAiConnectorRoutes } from '@dhruva/ai-connectors/next';
+import { createNextAiConnectorRoutes } from '@dhruvaaignited/ai-connectors/next';
 
 export const { GET, POST, PATCH, DELETE } = createNextAiConnectorRoutes({
   requireUser: async (request) => {
@@ -449,7 +449,7 @@ export function AiBox() {
 Text generation works with all four providers after the provider sign-in flow is complete:
 
 ```js
-import { generateText } from '@dhruva/ai-connectors';
+import { generateText } from '@dhruvaaignited/ai-connectors';
 
 const answer = await generateText({
   provider: 'claude',
@@ -465,7 +465,7 @@ Media helper examples below assume your server has already been configured for G
 ### 6A. Send an Image to AI
 
 ```js
-import { generateTextFromMedia } from '@dhruva/ai-connectors';
+import { generateTextFromMedia } from '@dhruvaaignited/ai-connectors';
 
 const result = await generateTextFromMedia({
   provider: 'grok',
@@ -510,7 +510,7 @@ const result = await generateTextFromMedia({
 Upload a local file, then ask using the returned file id:
 
 ```js
-import { uploadFile, generateTextFromMedia } from '@dhruva/ai-connectors';
+import { uploadFile, generateTextFromMedia } from '@dhruvaaignited/ai-connectors';
 
 const uploaded = await uploadFile({
   provider: 'grok',
@@ -530,7 +530,7 @@ console.log(result.text);
 ### 6C. Send Voice/Audio and Convert It to Text
 
 ```js
-import { transcribeAudio, generateText } from '@dhruva/ai-connectors';
+import { transcribeAudio, generateText } from '@dhruvaaignited/ai-connectors';
 
 const transcript = await transcribeAudio({
   provider: 'grok',
@@ -551,7 +551,7 @@ console.log(reply.text);
 
 ```js
 import { writeFile } from 'node:fs/promises';
-import { generateSpeech } from '@dhruva/ai-connectors';
+import { generateSpeech } from '@dhruvaaignited/ai-connectors';
 
 const speech = await generateSpeech({
   provider: 'grok',
@@ -567,7 +567,7 @@ await writeFile('welcome.mp3', speech.audio);
 ### 6E. Generate an AI Image
 
 ```js
-import { generateImage } from '@dhruva/ai-connectors';
+import { generateImage } from '@dhruvaaignited/ai-connectors';
 
 const image = await generateImage({
   provider: 'grok',
@@ -581,7 +581,7 @@ console.log(image.images[0]?.url);
 ### 6F. Generate an AI Video
 
 ```js
-import { generateVideo } from '@dhruva/ai-connectors';
+import { generateVideo } from '@dhruvaaignited/ai-connectors';
 
 const video = await generateVideo({
   provider: 'grok',
@@ -613,7 +613,7 @@ await generateVideo({
 The current `streamText()` wrapper yields the provider result as chunks.
 
 ```js
-import { streamText } from '@dhruva/ai-connectors';
+import { streamText } from '@dhruvaaignited/ai-connectors';
 
 for await (const chunk of streamText({
   provider: 'gemini',

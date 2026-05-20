@@ -1,4 +1,4 @@
-import { generateGrokText } from '@dhruva/ai-connectors/grok';
+import { generateGrokText } from '@dhruvaaignited/ai-connectors/grok';
 
 const result = await generateGrokText({
   auth: { kind: 'api_key', apiKey: process.env.XAI_API_KEY },
