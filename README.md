@@ -6,7 +6,18 @@ Description: Connect Codex, Anthropic, Google, and Grok with one package API. Ma
 
 ## Preferred API
 
-The package now exposes two high-level functions:
+Use two high-level functions:
+
+- `connectAI()` starts OAuth/login and stores the provider connection metadata server-side.
+- `useAI()` runs text, image, video, audio, PDF, DOC, Excel, or CSV generation after a provider is connected.
+
+Preferred public provider names:
+
+```ts
+type AIProvider = 'codex' | 'anthropic' | 'google' | 'grok';
+```
+
+Quick server-side example:
 
 ```js
 import { connectAI, useAI } from '@ignitedaibusiness/ai-connectors';
@@ -29,7 +40,7 @@ const pdf = await useAI({
 });
 ```
 
-`connectAI()` is OAuth-first. For `codex`, `anthropic`, and `google`, it starts the provider CLI OAuth flow, opens/returns the browser login URL when the provider exposes one, then records the connected provider metadata in SQLite after sign-in succeeds. If a provider CLI asks for an authorization code, the returned result includes `needsCode: true` and the same session can be completed through the Next route's `submitCode` action.
+`connectAI()` is OAuth-first. For `codex`, `anthropic`, and `google`, it starts the provider CLI OAuth flow, opens/returns the browser login URL when the provider exposes one, then records the connected provider metadata in encrypted SQLite after sign-in succeeds. If a provider CLI asks for an authorization code, the returned result includes `needsCode: true`; submit that code to the same API route with `action: "submitCode"`.
 
 Optional `.env` values:
 
@@ -43,31 +54,232 @@ GEMINI_MODEL=gemini-2.5-flash
 GROK_MODEL=grok-4.3
 ```
 
-For browser/React usage, call the same names from client code and point them at your API route:
+## Step 1. `connectAI()` Examples
+
+These examples use the same provider names everywhere: `codex`, `anthropic`, `google`, and `grok`.
+
+### React.js
+
+React runs in the browser, so provider CLI login and SQLite storage must happen through your server route. The component below calls `/api/ai`, opens the provider login page in a new tab when available, and then uses the connected provider.
+
+```jsx
+import { useState } from 'react';
+import { connectAI, useAI } from '@ignitedaibusiness/ai-connectors';
+
+export function AiPanel() {
+  const [status, setStatus] = useState('idle');
+  const [reply, setReply] = useState('');
+
+  async function connectCodex() {
+    setStatus('connecting');
+
+    const result = await connectAI({
+      provider: 'codex',
+      endpoint: '/api/ai',
+      setDefault: true,
+    });
+
+    if (result.needsCode) {
+      const code = window.prompt('Paste the authorization code');
+      if (code) {
+        await fetch('/api/ai', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            action: 'submitCode',
+            provider: result.provider,
+            sessionId: result.sessionId,
+            code,
+          }),
+        });
+      }
+    }
+
+    setStatus(result.connected ? 'connected' : result.status);
+  }
+
+  async function askAI() {
+    const result = await useAI({
+      provider: 'codex',
+      endpoint: '/api/ai',
+      output: 'text',
+      prompt: 'Write a polite reply for a delayed delivery.',
+    });
+
+    setReply(result.text || '');
+  }
+
+  return (
+    <section>
+      <button onClick={connectCodex}>Connect Codex</button>
+      <button onClick={askAI} disabled={status !== 'connected'}>
+        Ask AI
+      </button>
+      <p>{status}</p>
+      <pre>{reply}</pre>
+    </section>
+  );
+}
+```
+
+### Node.js
+
+Use this pattern for Express/Fastify/custom Node servers. The React/browser app calls this route; the route starts OAuth, checks status, accepts provider authorization codes, and runs `useAI()`.
+
+```js
+import express from 'express';
+import {
+  connectAI,
+  createAiConnectors,
+  useAI,
+} from '@ignitedaibusiness/ai-connectors';
+
+const app = express();
+const ai = createAiConnectors();
+
+app.use(express.json());
+
+app.post('/api/ai', async (req, res, next) => {
+  try {
+    const body = req.body || {};
+
+    if (body.action === 'connectAI') {
+      const result = await connectAI({
+        ...(body.input || body),
+        openBrowser: false,
+      });
+      return res.json(result);
+    }
+
+    if (body.action === 'status') {
+      const result = await ai.getLoginStatus(body.provider, body.sessionId);
+      return res.json(result);
+    }
+
+    if (body.action === 'submitCode') {
+      const result = await ai.submitLoginCode(body.provider, body.sessionId, body.code);
+      return res.json(result);
+    }
+
+    if (body.action === 'useAI') {
+      const result = await useAI(body.input || body);
+      return res.json(result);
+    }
+
+    return res.status(400).json({ error: 'Unknown action' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.listen(3000, () => {
+  console.log('AI route ready at http://localhost:3000/api/ai');
+});
+```
+
+Direct Node script:
 
 ```js
 import { connectAI, useAI } from '@ignitedaibusiness/ai-connectors';
 
-await connectAI({
-  provider: 'codex',
-  endpoint: '/api/ai',
+const connection = await connectAI({
+  provider: 'google',
+  setDefault: true,
+  poll: true,
 });
 
-const image = await useAI({
-  provider: 'grok',
-  endpoint: '/api/ai',
-  output: 'image',
-  prompt: 'A clean ecommerce product mockup',
-});
+if (connection.connected) {
+  const result = await useAI({
+    provider: 'google',
+    output: 'csv',
+    prompt: 'Create a CSV of 5 CRM lead statuses.',
+  });
+
+  console.log(result.text);
+}
 ```
 
-In Next.js App Router, expose the server route:
+### Next.js
+
+Create one App Router API route:
+
+`app/api/ai/route.js`
 
 ```js
 import { createNextAiConnectorRoutes } from '@ignitedaibusiness/ai-connectors/next';
 
 export const { GET, POST, PATCH, DELETE } = createNextAiConnectorRoutes({
   requireUser: async () => ({ userId: 'demo-user', role: 'admin' }),
+});
+```
+
+Then call `connectAI()` and `useAI()` from a client component:
+
+```jsx
+'use client';
+
+import { useState } from 'react';
+import { connectAI, useAI } from '@ignitedaibusiness/ai-connectors';
+
+export default function ConnectAiButton() {
+  const [status, setStatus] = useState('idle');
+
+  async function connectGoogle() {
+    const result = await connectAI({
+      provider: 'google',
+      endpoint: '/api/ai',
+      setDefault: true,
+    });
+
+    setStatus(result.connected ? 'connected' : result.status);
+  }
+
+  async function generatePdf() {
+    const result = await useAI({
+      provider: 'google',
+      endpoint: '/api/ai',
+      output: 'pdf',
+      prompt: 'Create a one-page invoice summary.',
+      filename: 'invoice-summary.pdf',
+    });
+
+    console.log(result.asset);
+  }
+
+  return (
+    <div>
+      <button onClick={connectGoogle}>Connect Google</button>
+      <button onClick={generatePdf}>Generate PDF</button>
+      <span>{status}</span>
+    </div>
+  );
+}
+```
+
+### Any Provider
+
+```js
+await connectAI({ provider: 'codex', endpoint: '/api/ai' });
+await connectAI({ provider: 'anthropic', endpoint: '/api/ai' });
+await connectAI({ provider: 'google', endpoint: '/api/ai' });
+await connectAI({ provider: 'grok', endpoint: '/api/ai' });
+```
+
+Use any output type:
+
+```js
+const image = await useAI({
+  provider: 'grok',
+  endpoint: '/api/ai',
+  output: 'image',
+  prompt: 'A clean ecommerce product mockup',
+});
+
+const doc = await useAI({
+  provider: 'anthropic',
+  endpoint: '/api/ai',
+  output: 'doc',
+  prompt: 'Create a short project brief.',
 });
 ```
 
@@ -83,19 +295,21 @@ Codex, Claude, and Gemini text generation use their provider CLIs. The package i
 
 ## 1. Connect Provider OAuth
 
-Supported provider slugs:
+Preferred provider input:
 
 ```ts
-type ProviderSlug = 'codex' | 'claude' | 'gemini' | 'grok';
+type AIProvider = 'codex' | 'anthropic' | 'google' | 'grok';
 ```
+
+The package stores Anthropic as the internal CLI slug `claude` and Google as the internal CLI slug `gemini`. The high-level `connectAI()` and `useAI()` APIs normalize the public names for you.
 
 Sign-in summary:
 
 | Provider | Sign-in method | Login command |
 | --- | --- | --- |
 | `codex` | Codex CLI OAuth/browser sign-in | `codex` |
-| `claude` | Claude Code OAuth/browser sign-in | `claude auth login --claudeai` |
-| `gemini` | Gemini CLI Google sign-in | `gemini` |
+| `anthropic` | Claude Code OAuth/browser sign-in | `claude auth login --claudeai` |
+| `google` | Gemini CLI Google sign-in | `gemini` |
 | `grok` | Grok CLI browser sign-in | `grok` |
 
 ### 1A. Start OAuth With One Function
@@ -106,7 +320,7 @@ Use `connectAI()` for OAuth. In browser/React it calls your API route, opens a n
 import { connectAI } from '@ignitedaibusiness/ai-connectors';
 
 const result = await connectAI({
-  provider: 'gemini',
+  provider: 'google',
   endpoint: '/api/ai',
   setDefault: true,
 });
@@ -167,44 +381,42 @@ await ai.connectProvider('codex', {
 
 ## 2. Use in a Node.js Project
 
-First connect the provider through the OAuth flow, then call `generateText()`.
+First connect the provider through the OAuth flow, then call `useAI()`.
 
 ```js
 import {
-  connectProvider,
-  generateText,
-  getLoginStatus,
+  connectAI,
   runtimeStatus,
-  setDefaultProvider,
+  useAI,
 } from '@ignitedaibusiness/ai-connectors';
 
 console.log(await runtimeStatus());
 
-const session = await connectProvider('codex', {
-  authKind: 'cli_oauth',
+const connection = await connectAI({
+  provider: 'codex',
   setDefault: true,
+  poll: true,
 });
 
-console.log(session.instructions);
+if (connection.connected) {
+  const result = await useAI({
+    provider: 'codex',
+    output: 'text',
+    prompt: 'Write 5 WhatsApp follow-up replies for a new lead.',
+  });
 
-// After the user completes provider sign-in:
-await getLoginStatus('codex', session.id);
-await setDefaultProvider('codex');
-
-const result = await generateText({
-  prompt: 'Write 5 WhatsApp follow-up replies for a new lead.',
-});
-
-console.log(result.text);
+  console.log(result.text);
+}
 ```
 
 Call a specific selected provider:
 
 ```js
-const selectedProvider = 'gemini';
+const selectedProvider = 'google';
 
-const result = await generateText({
+const result = await useAI({
   provider: selectedProvider,
+  output: 'text',
   prompt: 'Explain this order refund policy in simple English.',
 });
 
@@ -218,12 +430,13 @@ There is no separate `setModel()` function. The model is selected with the `mode
 Use this pattern when the user selects both the provider and model from your UI:
 
 ```js
-import { generateText } from '@ignitedaibusiness/ai-connectors';
+import { useAI } from '@ignitedaibusiness/ai-connectors';
 
 async function askSelectedAi({ provider, model, prompt }) {
-  const result = await generateText({
+  const result = await useAI({
     provider,
     model,
+    output: 'text',
     prompt,
   });
 
@@ -231,7 +444,7 @@ async function askSelectedAi({ provider, model, prompt }) {
 }
 
 const text = await askSelectedAi({
-  provider: 'gemini',
+  provider: 'google',
   model: 'gemini-2.5-flash',
   prompt: 'Write a short customer support reply.',
 });
@@ -242,47 +455,53 @@ console.log(text);
 Provider-specific examples:
 
 ```js
-await generateText({
+await useAI({
   provider: 'codex',
   model: 'gpt-5.5',
+  output: 'text',
   prompt: 'Review this implementation plan.',
 });
 
-await generateText({
-  provider: 'claude',
+await useAI({
+  provider: 'anthropic',
   model: 'opus',
+  output: 'text',
   prompt: 'Analyze this complex support escalation.',
 });
 
-await generateText({
-  provider: 'claude',
+await useAI({
+  provider: 'anthropic',
   model: 'sonnet',
+  output: 'text',
   prompt: 'Draft a balanced customer support reply.',
 });
 
-await generateText({
-  provider: 'claude',
+await useAI({
+  provider: 'anthropic',
   model: 'haiku',
+  output: 'text',
   prompt: 'Classify this message as sales, support, or billing.',
 });
 
-await generateText({
-  provider: 'gemini',
+await useAI({
+  provider: 'google',
   model: 'gemini-2.5-flash',
+  output: 'text',
   prompt: 'Create a campaign outline.',
 });
 
-await generateText({
+await useAI({
   provider: 'grok',
   model: 'grok-4.3',
+  output: 'text',
   prompt: 'Draft a concise product update.',
 });
 ```
 
-Claude Code supports both aliases and pinned model IDs. The aliases are easier for users because Claude Code resolves them to the latest available version for the signed-in account/provider. Use pinned IDs when you want a specific version.
+Anthropic Claude Code supports both aliases and pinned model IDs. The aliases are easier for users because Claude Code resolves them to the latest available version for the signed-in account/provider. Use pinned IDs when you want a specific version.
 
 ```js
-const claudeModels = [
+const anthropicModels = [
   { value: 'opus', label: 'Claude Opus 4.7', use: 'best for complex coding and reasoning' },
   { value: 'sonnet', label: 'Claude Sonnet 4.6', use: 'balanced speed and intelligence' },
   { value: 'haiku', label: 'Claude Haiku 4.5', use: 'fastest option for simple tasks' },
@@ -295,17 +514,18 @@ const claudeModels = [
   { value: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5 pinned', use: 'dated exact model id' },
 ];
 
-async function askClaude({ model, prompt }) {
-  const result = await generateText({
-    provider: 'claude',
+async function askAnthropic({ model, prompt }) {
+  const result = await useAI({
+    provider: 'anthropic',
     model,
+    output: 'text',
     prompt,
   });
 
   return result.text;
 }
 
-await askClaude({
+await askAnthropic({
   model: 'claude-sonnet-4-6',
   prompt: 'Write a concise customer reply.',
 });
@@ -318,8 +538,8 @@ const providerModelPresets = {
   codex: [
     { value: 'gpt-5.5', label: 'GPT-5.5' },
   ],
-  claude: claudeModels,
-  gemini: [
+  anthropic: anthropicModels,
+  google: [
     { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
   ],
   grok: [
@@ -328,30 +548,33 @@ const providerModelPresets = {
 };
 
 async function runSelectedModel({ provider, model, prompt }) {
-  const result = await generateText({ provider, model, prompt });
+  const result = await useAI({ provider, model, output: 'text', prompt });
   return result.text;
 }
 ```
 
-The same `model` option is available on media helpers:
+The same `model` option is available on media and document outputs:
 
 ```js
-await generateTextFromMedia({
+await useAI({
   provider: 'grok',
   model: 'grok-4.3',
+  output: 'media-text',
   prompt: 'Describe this image.',
   media: [{ type: 'image', url: 'https://example.com/screenshot.png' }],
 });
 
-await generateImage({
+await useAI({
   provider: 'grok',
   model: 'grok-imagine-image',
+  output: 'image',
   prompt: 'A clean CRM dashboard mockup',
 });
 
-await generateVideo({
+await useAI({
   provider: 'grok',
   model: 'grok-imagine-video',
+  output: 'video',
   prompt: 'A short product intro animation',
   duration: 5,
 });
@@ -385,105 +608,87 @@ export const { GET, POST, PATCH, DELETE } = createNextAiConnectorRoutes({
 });
 ```
 
-Start provider OAuth from the frontend:
+Start provider OAuth from the frontend with `connectAI()`:
 
 ```js
-const res = await fetch('/api/ai', {
-  method: 'POST',
-  headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({
-    action: 'connect',
-    provider: 'gemini',
-    options: {
-      authKind: 'cli_oauth',
-      setDefault: true,
-    },
-  }),
+import { connectAI } from '@ignitedaibusiness/ai-connectors';
+
+const result = await connectAI({
+  provider: 'google',
+  endpoint: '/api/ai',
+  setDefault: true,
 });
 
-const session = await res.json();
-console.log(session.command);
-console.log(session.instructions);
+console.log(result.status);
 ```
 
-Check the connection after the user completes provider sign-in:
+Generate text from your frontend with `useAI()`:
 
 ```js
-const res = await fetch('/api/ai', {
-  method: 'POST',
-  headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({
-    action: 'status',
-    provider: 'gemini',
-    sessionId: session.id,
-  }),
+import { useAI } from '@ignitedaibusiness/ai-connectors';
+
+const data = await useAI({
+  provider: 'google',
+  endpoint: '/api/ai',
+  output: 'text',
+  model: 'gemini-2.5-flash',
+  prompt: 'Create a short CRM note from this call summary.',
 });
 
-console.log(await res.json());
-```
-
-Generate text from your frontend:
-
-```js
-const res = await fetch('/api/ai', {
-  method: 'POST',
-  headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({
-    provider: 'gemini',
-    model: 'gemini-2.5-flash',
-    prompt: 'Create a short CRM note from this call summary.',
-  }),
-});
-
-const data = await res.json();
 console.log(data.text);
 ```
 
 The same Next route can also call media actions when your server is configured for them:
 
 ```js
-const imageRes = await fetch('/api/ai', {
-  method: 'POST',
-  headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({
-    action: 'image',
-    input: {
-      provider: 'grok',
-      prompt: 'A clean CRM dashboard mockup',
-    },
-  }),
+const image = await useAI({
+  provider: 'grok',
+  endpoint: '/api/ai',
+  output: 'image',
+  prompt: 'A clean CRM dashboard mockup',
 });
 
-console.log(await imageRes.json());
+console.log(image.assets?.[0]?.url);
 ```
 
 ## 5. React Project Pattern
 
-Do not use this package directly in a React browser component. The React component should call an API route, and that API route should call this package.
+React can import `connectAI()` and `useAI()` directly. In the browser bundle, both functions forward to your API route; provider credentials and SQLite storage stay server-side.
 
 ```jsx
 import { useState } from 'react';
+import { connectAI, useAI } from '@ignitedaibusiness/ai-connectors';
 
 export function AiBox() {
+  const [connected, setConnected] = useState(false);
   const [text, setText] = useState('');
 
-  async function askAi() {
-    const res = await fetch('/api/ai', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        provider: 'gemini',
-        model: 'gemini-2.5-flash',
-        prompt: 'Write a polite reply for a delayed delivery.',
-      }),
+  async function connect() {
+    const result = await connectAI({
+      provider: 'anthropic',
+      endpoint: '/api/ai',
+      setDefault: true,
     });
-    const data = await res.json();
-    setText(data.text);
+
+    setConnected(result.connected);
+  }
+
+  async function askAi() {
+    const result = await useAI({
+      provider: 'anthropic',
+      endpoint: '/api/ai',
+      output: 'text',
+      model: 'sonnet',
+      prompt: 'Write a polite reply for a delayed delivery.',
+    });
+
+    setText(result.text || '');
   }
 
   return (
     <div>
-      <button onClick={askAi}>Ask AI</button>
+      <button onClick={connect}>Connect Anthropic</button>
+      <button onClick={askAi} disabled={!connected}>Ask AI</button>
       <pre>{text}</pre>
     </div>
   );
@@ -495,10 +700,11 @@ export function AiBox() {
 Text generation works with all four providers after the provider sign-in flow is complete:
 
 ```js
-import { generateText } from '@ignitedaibusiness/ai-connectors';
+import { useAI } from '@ignitedaibusiness/ai-connectors';
 
-const answer = await generateText({
-  provider: 'claude',
+const answer = await useAI({
+  provider: 'anthropic',
+  output: 'text',
   model: 'claude-sonnet-4-6',
   prompt: 'Summarize this customer complaint in 3 bullet points.',
 });
@@ -576,7 +782,7 @@ console.log(result.text);
 ### 6C. Send Voice/Audio and Convert It to Text
 
 ```js
-import { transcribeAudio, generateText } from '@ignitedaibusiness/ai-connectors';
+import { transcribeAudio, useAI } from '@ignitedaibusiness/ai-connectors';
 
 const transcript = await transcribeAudio({
   provider: 'grok',
@@ -584,9 +790,10 @@ const transcript = await transcribeAudio({
   language: 'en',
 });
 
-const reply = await generateText({
+const reply = await useAI({
   provider: 'grok',
   model: 'grok-4.3',
+  output: 'text',
   prompt: `Create a CRM note from this customer call transcript:\n\n${transcript.text}`,
 });
 
@@ -656,7 +863,7 @@ await generateVideo({
 
 ## 7. Streaming Text
 
-The current `streamText()` wrapper yields the provider result as chunks.
+The current lower-level `streamText()` wrapper yields the provider result as chunks. Streaming uses the internal CLI provider slug for Claude/Gemini.
 
 ```js
 import { streamText } from '@ignitedaibusiness/ai-connectors';
@@ -690,7 +897,7 @@ npx hru-ai logout gemini
 - Do not expose provider credentials in a React/browser bundle.
 - `connectProvider()` stores safe metadata such as provider slug, auth mode, and connection status.
 - `disconnectProvider()` deletes package metadata only. It does not delete provider CLI credential files. Use the provider CLI logout command when you need to remove CLI-managed credentials.
-- Media helpers are currently implemented for Grok server-side media mode. Use `generateText()` for Codex, Claude, and Gemini text-only calls. For full provider-native multimodal support, use each provider's official SDK/API.
+- Media helpers are currently implemented for Grok server-side media mode. Use `useAI({ output: "text" })` for Codex, Anthropic, and Google text-only calls. For full provider-native multimodal support, use each provider's official SDK/API.
 
 ## 10. Official Docs Checked
 
