@@ -111,9 +111,12 @@ export interface ConnectAIInput extends ConnectProviderOptions, AiConnectorsOpti
   provider: ProviderInput;
   endpoint?: string;
   statusEndpoint?: string;
+  sessionId?: string;
+  code?: string;
   poll?: boolean;
   pollIntervalMs?: number;
   maxPollAttempts?: number;
+  onStatus?: (result: ConnectAIResult) => void;
 }
 
 export interface ConnectAIResult {

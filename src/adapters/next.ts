@@ -1,5 +1,6 @@
 import { createAiConnectors } from '../create-ai-connectors.js';
 import { connectAI } from '../connect-ai.js';
+import { normalizeProvider } from '../provider-alias.js';
 import { useAI } from '../use-ai.js';
 import type { AiConnectorsOptions } from '../types.js';
 
@@ -44,9 +45,9 @@ export function createNextAiConnectorRoutes(options: NextRouteOptions = {}) {
       const body = await request.json().catch(() => ({}));
       if (body.action === 'connectAI') return json(await connectAI({ ...(body.input || body), ...options }));
       if (body.action === 'useAI') return json(serializeUseAIResult(await useAI({ ...(body.input || body), ...options })));
-      if (body.action === 'connect') return json(await connectors.connectProvider(body.provider, body.options || {}));
-      if (body.action === 'status') return json(await connectors.getLoginStatus(body.provider, body.sessionId));
-      if (body.action === 'submitCode') return json(await connectors.submitLoginCode(body.provider, body.sessionId, body.code || ''));
+      if (body.action === 'connect') return json(await connectors.connectProvider(normalizeProvider(body.provider), body.options || {}));
+      if (body.action === 'status') return json(await connectors.getLoginStatus(normalizeProvider(body.provider), body.sessionId));
+      if (body.action === 'submitCode') return json(await connectors.submitLoginCode(normalizeProvider(body.provider), body.sessionId, body.code || ''));
       if (body.action === 'stream') {
         const chunks = [];
         for await (const chunk of connectors.streamText(body)) chunks.push(chunk);
@@ -72,7 +73,7 @@ export function createNextAiConnectorRoutes(options: NextRouteOptions = {}) {
       const blocked = await guard(request, options.requireUser);
       if (blocked) return blocked;
       const body = await request.json().catch(() => ({}));
-      if (body.defaultProvider) await connectors.setDefaultProvider(body.defaultProvider);
+      if (body.defaultProvider) await connectors.setDefaultProvider(normalizeProvider(body.defaultProvider));
       return json({ ok: true });
     },
 
@@ -80,7 +81,7 @@ export function createNextAiConnectorRoutes(options: NextRouteOptions = {}) {
       const blocked = await guard(request, options.requireUser);
       if (blocked) return blocked;
       const body = await request.json().catch(() => ({}));
-      return json(await connectors.disconnectProvider(body.provider));
+      return json(await connectors.disconnectProvider(normalizeProvider(body.provider)));
     },
   };
 }

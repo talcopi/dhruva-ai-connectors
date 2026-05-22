@@ -40,7 +40,7 @@ const pdf = await useAI({
 });
 ```
 
-`connectAI()` is OAuth-first. For `codex`, `anthropic`, and `google`, it starts the provider CLI OAuth flow, opens/returns the browser login URL when the provider exposes one, then records the connected provider metadata in encrypted SQLite after sign-in succeeds. If a provider CLI asks for an authorization code, the returned result includes `needsCode: true`; submit that code to the same API route with `action: "submitCode"`.
+`connectAI()` is OAuth-first. For `codex`, `anthropic`, and `google`, it starts the provider CLI OAuth flow, opens/returns the browser login URL when the provider exposes one, then records the connected provider metadata in encrypted SQLite after sign-in succeeds. If a provider CLI asks for an authorization code, the returned result includes `needsCode: true`; submit that code with the same `connectAI()` function by passing `sessionId` and `code`.
 
 Optional `.env` values:
 
@@ -82,16 +82,15 @@ export function AiPanel() {
     if (result.needsCode) {
       const code = window.prompt('Paste the authorization code');
       if (code) {
-        await fetch('/api/ai', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            action: 'submitCode',
-            provider: result.provider,
-            sessionId: result.sessionId,
-            code,
-          }),
+        const completed = await connectAI({
+          provider: result.provider,
+          endpoint: '/api/ai',
+          sessionId: result.sessionId,
+          code,
+          poll: true,
         });
+        setStatus(completed.connected ? 'connected' : completed.status);
+        return;
       }
     }
 
@@ -354,6 +353,39 @@ const result = await connectAI({
 console.log(result.status); // "connected" means ready
 ```
 
+For Claude/Anthropic and Google/Gemini, the provider page may show an authorization code after login. Paste that code back with the same function:
+
+```js
+const started = await connectAI({
+  provider: 'anthropic',
+  endpoint: '/api/ai',
+});
+
+if (started.needsCode) {
+  const completed = await connectAI({
+    provider: started.provider,
+    endpoint: '/api/ai',
+    sessionId: started.sessionId,
+    code: 'paste-code-from-provider-page',
+    poll: true,
+  });
+
+  console.log(completed.status);
+}
+```
+
+For Codex, `connectAI()` appends the `userCode` to the login URL when the Codex CLI provides one and also exposes it in the result/onStatus callback:
+
+```js
+await connectAI({
+  provider: 'codex',
+  endpoint: '/api/ai',
+  onStatus: (status) => {
+    if (status.userCode) console.log(`Codex code: ${status.userCode}`);
+  },
+});
+```
+
 Provider examples:
 
 ```js
@@ -370,7 +402,7 @@ The user flow is:
 1. Your app calls `connectAI()`.
 2. Your API route starts the provider OAuth flow.
 3. The browser opens the provider login page when a URL is available.
-4. If the provider asks for an authorization code, submit it back to the same route with `action: "submitCode"`.
+4. If the provider asks for an authorization code, call `connectAI({ provider, endpoint, sessionId, code, poll: true })`.
 5. When the status becomes `"connected"`, the selected AI provider is ready to use.
 
 ```js
