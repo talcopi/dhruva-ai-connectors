@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
-import { ensurePrivateDir, providerHome, sanitizedCliEnv } from './env.js';
+import { ensureGeminiConfigDir, ensurePrivateDir, providerHome, sanitizedCliEnv } from './env.js';
 import { PROVIDERS } from './providers.js';
 import { findExecutable, spawnExecutable } from './process/run-cli.js';
 import { runtimeProviderStatus } from './runtime.js';
@@ -15,6 +15,8 @@ type OAuthSessionState = LoginSession & {
   child?: ChildProcess;
   codex?: CodexAppServer;
   outputTail?: string;
+  exited?: boolean;
+  exitCode?: number | null;
 };
 
 const TTL_MS = 10 * 60 * 1000;
@@ -95,7 +97,7 @@ export async function submitOAuthCode({
     session.error = 'Authorization code is required';
     return publicSession(session);
   }
-  if (!session.child || session.child.killed) {
+  if (!session.child || session.child.killed || session.exited) {
     return getOAuthLoginStatus({ provider, sessionId, cwd, env });
   }
   session.child.stdin?.write(`${code.trim()}\n`);
@@ -201,7 +203,7 @@ async function startGeminiOAuth({
   const runtime = runtimeProviderStatus('gemini', cwd, env);
   if (!runtime.installed) return failedSession('gemini', 'cli_oauth', 'Gemini CLI is not installed.');
   if (process.platform === 'win32') return failedSession('gemini', 'cli_oauth', 'Gemini OAuth capture requires a pseudo-terminal on non-Windows systems.');
-  await ensurePrivateDir(providerHome('gemini', cwd, env));
+  await ensureGeminiConfigDir(cwd, env);
   const bundlePath = geminiBundlePath(cwd);
   if (!bundlePath) return failedSession('gemini', 'cli_oauth', 'Gemini CLI bundle was not found.');
 
@@ -220,13 +222,18 @@ async function startGeminiOAuth({
       GEMINI_FORCE_ENCRYPTED_FILE_STORAGE: 'true',
       NO_BROWSER: 'true',
       TERM: env.TERM || 'xterm-256color',
+      COLORTERM: env.COLORTERM || 'truecolor',
     }),
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   session.child = child;
   child.stdout?.on('data', (chunk) => consumeUrlOutput(session, chunk, GEMINI_URL_RE, openBrowser));
   child.stderr?.on('data', (chunk) => consumeUrlOutput(session, chunk, GEMINI_URL_RE, openBrowser));
-  child.on('close', () => completeProcessSession(session, 'gemini', cwd, env, 'Gemini login exited before OAuth completed.'));
+  child.on('close', (code) => {
+    session.exited = true;
+    session.exitCode = code;
+    completeProcessSession(session, 'gemini', cwd, env, geminiExitError(session));
+  });
   child.on('error', (error) => {
     session.status = 'failed';
     session.error = error.message;
@@ -324,6 +331,12 @@ async function completeProcessSession(
     session.status = session.verificationUrl ? 'pending' : 'failed';
     if (!session.verificationUrl) session.error = fallbackError;
   }
+}
+
+function geminiExitError(session: OAuthSessionState): string {
+  if (session.verificationUrl) return 'Gemini login process exited before the authorization code was submitted. Start login again.';
+  const tail = String(session.outputTail || '').trim().split('\n').slice(-4).join(' ').trim();
+  return tail ? `Gemini login exited before an OAuth URL was detected: ${tail.slice(0, 500)}` : 'Gemini login exited before an OAuth URL was detected.';
 }
 
 async function completeCodexIfReady(session: OAuthSessionState): Promise<void> {

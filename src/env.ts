@@ -98,6 +98,45 @@ export async function ensurePrivateDir(dir: string): Promise<string> {
   return dir;
 }
 
+export async function ensureGeminiConfigDir(cwd = process.cwd(), env: NodeJS.ProcessEnv = process.env): Promise<string> {
+  const dir = await ensurePrivateDir(path.join(providerHome('gemini', cwd, env), '.gemini'));
+  const settingsPath = path.join(dir, 'settings.json');
+  const requiredSettings = {
+    security: {
+      auth: { selectedType: 'oauth-personal' },
+      folderTrust: { enabled: false },
+    },
+    ide: { enabled: false, hasSeenNudge: true },
+    tools: { useRipgrep: false },
+    ui: { terminalBuffer: false, useAlternateBuffer: false },
+  };
+  let existing = {};
+  try {
+    existing = JSON.parse(await fsp.readFile(settingsPath, 'utf8'));
+  } catch {
+    // Use defaults when settings do not exist or cannot be parsed.
+  }
+  await fsp.writeFile(settingsPath, `${JSON.stringify(mergePlainObject(existing, requiredSettings), null, 2)}\n`, { mode: 0o600 });
+  try {
+    await fsp.chmod(settingsPath, 0o600);
+  } catch {
+    // Best effort on non-POSIX filesystems.
+  }
+  return dir;
+}
+
+function mergePlainObject(base: unknown, update: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = base && typeof base === 'object' && !Array.isArray(base) ? { ...(base as Record<string, unknown>) } : {};
+  for (const [key, value] of Object.entries(update)) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      result[key] = mergePlainObject(result[key], value as Record<string, unknown>);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
 export async function writePrivateFile(filePath: string, contents: string): Promise<void> {
   await ensurePrivateDir(path.dirname(filePath));
   await fsp.writeFile(filePath, contents, { mode: 0o600 });

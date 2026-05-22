@@ -1,6 +1,6 @@
 {
   "name": "@ignitedaibusiness/ai-connectors",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Multi-provider AI connector package for Codex, Claude, Gemini, and Grok.",
   "type": "module",
   "main": "./dist/index.cjs",

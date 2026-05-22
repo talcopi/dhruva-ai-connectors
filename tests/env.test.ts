@@ -1,5 +1,8 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { keyPreview, redactEnv, sanitizedCliEnv } from '../src/env.js';
+import { ensureGeminiConfigDir, keyPreview, redactEnv, sanitizedCliEnv } from '../src/env.js';
 
 describe('env helpers', () => {
   it('redacts secret-like values', () => {
@@ -21,5 +24,17 @@ describe('env helpers', () => {
 
   it('creates short key previews', () => {
     expect(keyPreview('xai-1234567890')).toBe('xai-12...7890');
+  });
+
+  it('preseeds Gemini OAuth settings without external setup', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hru-gemini-env-'));
+    try {
+      const configDir = await ensureGeminiConfigDir(dir, {});
+      const settings = JSON.parse(await fs.readFile(path.join(configDir, 'settings.json'), 'utf8'));
+      expect(settings.security.auth.selectedType).toBe('oauth-personal');
+      expect(settings.ide.enabled).toBe(false);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
   });
 });
