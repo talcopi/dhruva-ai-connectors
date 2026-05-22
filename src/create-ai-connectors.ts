@@ -5,7 +5,8 @@ import { keyPreview, resolveHomeDir } from './env.js';
 import { PROVIDERS, PROVIDER_SLUGS } from './providers.js';
 import { runtimeProviderStatus, runtimeStatus as readRuntimeStatus } from './runtime.js';
 import { SQLiteProviderStore } from './storage/sqlite-store.js';
-import { EnvSecretStore } from './secrets/env-secret-store.js';
+import { SQLiteSecretStore } from './secrets/sqlite-secret-store.js';
+import { getOAuthLoginStatus, startOAuthLogin, submitOAuthCode } from './oauth-login.js';
 import { generateText as generateTextRoot } from './generate-text.js';
 import { streamText as streamTextRoot } from './stream-text.js';
 import {
@@ -82,7 +83,13 @@ function loginArgs(provider: ProviderSlug): string[] {
   return [];
 }
 
-function storedProvider(provider: ProviderSlug, authKind: AuthKind, isDefault = false, apiKey = ''): StoredProvider {
+function storedProvider(
+  provider: ProviderSlug,
+  authKind: AuthKind,
+  isDefault = false,
+  secretValue = '',
+  encryptedSecretRef = ''
+): StoredProvider {
   const definition = PROVIDERS[provider];
   return {
     slug: provider,
@@ -96,7 +103,8 @@ function storedProvider(provider: ProviderSlug, authKind: AuthKind, isDefault = 
       defaultModel: definition.defaultModel,
       providerAuthMode: authKind,
     },
-    keyPreview: apiKey ? keyPreview(apiKey) : undefined,
+    keyPreview: secretValue ? keyPreview(secretValue) : undefined,
+    encryptedSecretRef: encryptedSecretRef || undefined,
     connectedAt: nowIso(),
   };
 }
@@ -111,7 +119,7 @@ export function createAiConnectors(options: AiConnectorsOptions = {}): AiConnect
   const homeDir = path.resolve(cwd, options.homeDir || env.HRU_AI_HOME || '.hru-ai');
   const sqlitePath = env.HRU_AI_SQLITE_PATH ? path.resolve(cwd, env.HRU_AI_SQLITE_PATH) : path.join(homeDir, 'providers.sqlite');
   const store: ProviderStore = options.store || new SQLiteProviderStore(sqlitePath);
-  const secretStore: SecretStore = options.secretStore || new EnvSecretStore(env);
+  const secretStore: SecretStore = options.secretStore || new SQLiteSecretStore(sqlitePath);
   const defaultProvider = options.defaultProvider || 'codex';
 
   async function listProviders(): Promise<ProviderStatus[]> {
@@ -134,27 +142,57 @@ export function createAiConnectors(options: AiConnectorsOptions = {}): AiConnect
 
   async function connectProvider(provider: ProviderSlug, connectOptions: ConnectProviderOptions = {}): Promise<LoginSession> {
     const definition = PROVIDERS[provider];
-    const authKind = connectOptions.authKind || definition.defaultAuthKind;
     const apiKey =
       connectOptions.apiKey ||
       (provider === 'grok' ? env.XAI_API_KEY || env.GROK_CODE_XAI_API_KEY : '') ||
       (provider === 'codex' ? env.OPENAI_API_KEY : '') ||
-      (provider === 'claude' ? env.ANTHROPIC_API_KEY || env.CLAUDE_CODE_OAUTH_TOKEN : '') ||
+      (provider === 'claude' ? env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN : '') ||
       (provider === 'gemini' ? env.GEMINI_API_KEY || env.GOOGLE_API_KEY : '');
+    const oauthToken = connectOptions.oauthToken || (provider === 'claude' ? env.CLAUDE_CODE_OAUTH_TOKEN || '' : '');
+    const authKind = connectOptions.authKind || (apiKey ? 'api_key' : oauthToken ? 'oauth_token' : definition.defaultAuthKind);
+
+    if ((authKind === 'cli_oauth' || authKind === 'cli_browser') && !connectOptions.interactive) {
+      const session = await startOAuthLogin({
+        provider,
+        authKind,
+        cwd,
+        env,
+        openBrowser: connectOptions.openBrowser !== false,
+      });
+      if (session.status === 'connected') await store.upsert(storedProvider(provider, authKind, !!connectOptions.setDefault));
+      return session;
+    }
 
     if (authKind === 'api_key' || (provider === 'grok' && apiKey)) {
-      await store.upsert(storedProvider(provider, 'api_key', !!connectOptions.setDefault, apiKey));
+      if (!apiKey) {
+        return makeSession(provider, 'api_key', {
+          status: 'failed',
+          error: `${definition.label} API key is required for api_key auth.`,
+        });
+      }
+      const ref = secretRef(provider, 'api_key');
+      await secretStore.set(ref, apiKey);
+      await store.upsert(storedProvider(provider, 'api_key', !!connectOptions.setDefault, apiKey, ref));
       return makeSession(provider, 'api_key', {
         status: 'connected',
-        instructions: `${definition.label} connected with API key metadata. Raw key was not stored by default.`,
+        instructions: `${definition.label} connected. Credential was stored encrypted in the configured SQL secret store.`,
       });
     }
 
-    if (authKind === 'oauth_token' && connectOptions.oauthToken) {
-      await store.upsert(storedProvider(provider, 'oauth_token', !!connectOptions.setDefault));
+    if (authKind === 'oauth_token' && oauthToken) {
+      const ref = secretRef(provider, 'oauth_token');
+      await secretStore.set(ref, oauthToken);
+      await store.upsert(storedProvider(provider, 'oauth_token', !!connectOptions.setDefault, oauthToken, ref));
       return makeSession(provider, 'oauth_token', {
         status: 'connected',
-        instructions: `${definition.label} connected with OAuth token metadata. Raw token was not stored by default.`,
+        instructions: `${definition.label} connected. OAuth token was stored encrypted in the configured SQL secret store.`,
+      });
+    }
+
+    if (authKind === 'oauth_token') {
+      return makeSession(provider, 'oauth_token', {
+        status: 'failed',
+        error: `${definition.label} OAuth token is required for oauth_token auth.`,
       });
     }
 
@@ -187,6 +225,12 @@ export function createAiConnectors(options: AiConnectorsOptions = {}): AiConnect
   }
 
   async function getLoginStatus(provider: ProviderSlug, sessionId: string): Promise<LoginSession | null> {
+    const oauthSession = await getOAuthLoginStatus({ provider, sessionId, cwd, env });
+    if (oauthSession) {
+      if (oauthSession.status === 'connected') await store.upsert(storedProvider(provider, oauthSession.authKind));
+      return oauthSession;
+    }
+
     const session = sessions.get(sessionId);
     if (!session || session.provider !== provider) return null;
     if (session.expiresAt && Date.now() > new Date(session.expiresAt).getTime()) {
@@ -199,6 +243,12 @@ export function createAiConnectors(options: AiConnectorsOptions = {}): AiConnect
       session.status = 'connected';
       if (!record) await store.upsert(storedProvider(provider, session.authKind));
     }
+    return session;
+  }
+
+  async function submitLoginCode(provider: ProviderSlug, sessionId: string, code: string): Promise<LoginSession | null> {
+    const session = await submitOAuthCode({ provider, sessionId, code, cwd, env });
+    if (session?.status === 'connected') await store.upsert(storedProvider(provider, session.authKind));
     return session;
   }
 
@@ -227,42 +277,42 @@ export function createAiConnectors(options: AiConnectorsOptions = {}): AiConnect
 
   async function generateText(input: GenerateTextInput): Promise<GenerateTextResult> {
     const provider = input.provider || (await resolveDefaultProvider(store, defaultProvider));
-    return generateTextRoot({ ...input, provider });
+    return generateTextRoot(await withStoredAuth({ ...input, provider }));
   }
 
   async function* streamText(input: GenerateTextInput): AsyncIterable<GenerateTextChunk> {
     const provider = input.provider || (await resolveDefaultProvider(store, defaultProvider));
-    yield* streamTextRoot({ ...input, provider });
+    yield* streamTextRoot(await withStoredAuth({ ...input, provider }));
   }
 
   async function generateTextFromMedia(input: GenerateMediaTextInput): Promise<GenerateTextResult> {
     const provider = input.provider || (await resolveDefaultProvider(store, defaultProvider));
-    return generateTextFromMediaRoot({ ...input, provider });
+    return generateTextFromMediaRoot(await withStoredAuth({ ...input, provider }));
   }
 
   async function uploadFile(input: UploadFileInput): Promise<UploadFileResult> {
     const provider = input.provider || (await resolveDefaultProvider(store, defaultProvider));
-    return uploadFileRoot({ ...input, provider });
+    return uploadFileRoot(await withStoredAuth({ ...input, provider }));
   }
 
   async function generateImage(input: GenerateImageInput): Promise<GenerateImageResult> {
     const provider = input.provider || (await resolveDefaultProvider(store, defaultProvider));
-    return generateImageRoot({ ...input, provider });
+    return generateImageRoot(await withStoredAuth({ ...input, provider }));
   }
 
   async function generateVideo(input: GenerateVideoInput): Promise<GenerateVideoResult> {
     const provider = input.provider || (await resolveDefaultProvider(store, defaultProvider));
-    return generateVideoRoot({ ...input, provider });
+    return generateVideoRoot(await withStoredAuth({ ...input, provider }));
   }
 
   async function generateSpeech(input: GenerateSpeechInput): Promise<GenerateSpeechResult> {
     const provider = input.provider || (await resolveDefaultProvider(store, defaultProvider));
-    return generateSpeechRoot({ ...input, provider });
+    return generateSpeechRoot(await withStoredAuth({ ...input, provider }));
   }
 
   async function transcribeAudio(input: TranscribeAudioInput): Promise<TranscribeAudioResult> {
     const provider = input.provider || (await resolveDefaultProvider(store, defaultProvider));
-    return transcribeAudioRoot({ ...input, provider });
+    return transcribeAudioRoot(await withStoredAuth({ ...input, provider }));
   }
 
   async function runInteractiveLogin(provider: ProviderSlug): Promise<number | null> {
@@ -279,13 +329,12 @@ export function createAiConnectors(options: AiConnectorsOptions = {}): AiConnect
     });
   }
 
-  void secretStore;
-
   return {
     runtimeStatus: () => readRuntimeStatus({ cwd, env }),
     listProviders,
     connectProvider,
     getLoginStatus,
+    submitLoginCode,
     disconnectProvider,
     generateText,
     streamText,
@@ -298,6 +347,19 @@ export function createAiConnectors(options: AiConnectorsOptions = {}): AiConnect
     setDefaultProvider,
     runInteractiveLogin,
   };
+
+  async function withStoredAuth<T extends { provider?: ProviderSlug; auth?: { kind: AuthKind; apiKey?: string; oauthToken?: string } }>(
+    input: T
+  ): Promise<T> {
+    if (input.auth || !input.provider) return input;
+    const record = await store.get(input.provider);
+    if (!record?.encryptedSecretRef) return input;
+    const secret = await secretStore.get(record.encryptedSecretRef);
+    if (!secret) return input;
+    if (record.authKind === 'api_key') return { ...input, auth: { kind: 'api_key', apiKey: secret } };
+    if (record.authKind === 'oauth_token') return { ...input, auth: { kind: 'oauth_token', oauthToken: secret } };
+    return input;
+  }
 }
 
 async function resolveDefaultProvider(store: ProviderStore, fallback: ProviderSlug): Promise<ProviderSlug> {
@@ -310,4 +372,8 @@ let defaultConnectors: AiConnectors | null = null;
 export function getDefaultConnectors(): AiConnectors {
   if (!defaultConnectors) defaultConnectors = createAiConnectors();
   return defaultConnectors;
+}
+
+function secretRef(provider: ProviderSlug, authKind: AuthKind): string {
+  return `provider:${provider}:${authKind}`;
 }

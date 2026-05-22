@@ -1,4 +1,6 @@
 import { createAiConnectors } from '../create-ai-connectors.js';
+import { connectAI } from '../connect-ai.js';
+import { useAI } from '../use-ai.js';
 import type { AiConnectorsOptions } from '../types.js';
 
 type RequireUserResult = { userId: string; role?: string } | null;
@@ -40,8 +42,11 @@ export function createNextAiConnectorRoutes(options: NextRouteOptions = {}) {
       const blocked = await guard(request, options.requireUser);
       if (blocked) return blocked;
       const body = await request.json().catch(() => ({}));
+      if (body.action === 'connectAI') return json(await connectAI({ ...(body.input || body), ...options }));
+      if (body.action === 'useAI') return json(serializeUseAIResult(await useAI({ ...(body.input || body), ...options })));
       if (body.action === 'connect') return json(await connectors.connectProvider(body.provider, body.options || {}));
       if (body.action === 'status') return json(await connectors.getLoginStatus(body.provider, body.sessionId));
+      if (body.action === 'submitCode') return json(await connectors.submitLoginCode(body.provider, body.sessionId, body.code || ''));
       if (body.action === 'stream') {
         const chunks = [];
         for await (const chunk of connectors.streamText(body)) chunks.push(chunk);
@@ -77,5 +82,22 @@ export function createNextAiConnectorRoutes(options: NextRouteOptions = {}) {
       const body = await request.json().catch(() => ({}));
       return json(await connectors.disconnectProvider(body.provider));
     },
+  };
+}
+
+function serializeUseAIResult(result: any) {
+  return {
+    ...result,
+    asset: serializeAsset(result.asset),
+    assets: Array.isArray(result.assets) ? result.assets.map(serializeAsset) : result.assets,
+  };
+}
+
+function serializeAsset(asset: any) {
+  if (!asset?.bytes) return asset;
+  return {
+    ...asset,
+    bytes: Buffer.from(asset.bytes).toString('base64'),
+    encoding: 'base64',
   };
 }

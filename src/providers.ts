@@ -3,7 +3,7 @@ import type { ProviderDefinition, ProviderSlug } from './types.js';
 export const PROVIDERS: Record<ProviderSlug, ProviderDefinition> = {
   codex: {
     slug: 'codex',
-    label: 'OpenAI Codex',
+    label: 'Codex',
     vendor: 'openai',
     packageName: '@openai/codex',
     binary: 'codex',

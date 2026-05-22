@@ -2,6 +2,8 @@ import type { ChildProcess } from 'node:child_process';
 
 export type ProviderSlug = 'codex' | 'claude' | 'gemini' | 'grok';
 
+export type ProviderInput = ProviderSlug | 'anthropic' | 'google' | 'xai';
+
 export type AuthKind = 'cli_oauth' | 'cli_browser' | 'api_key' | 'oauth_token' | 'vertex';
 
 export type ProviderTransport = 'cli' | 'api' | 'app_server' | 'acp';
@@ -105,6 +107,30 @@ export interface ConnectProviderOptions {
   setDefault?: boolean;
 }
 
+export interface ConnectAIInput extends ConnectProviderOptions, AiConnectorsOptions {
+  provider: ProviderInput;
+  endpoint?: string;
+  statusEndpoint?: string;
+  poll?: boolean;
+  pollIntervalMs?: number;
+  maxPollAttempts?: number;
+}
+
+export interface ConnectAIResult {
+  provider: ProviderSlug;
+  status: LoginStatus;
+  sessionId: string;
+  authKind: AuthKind;
+  redirectUrl?: string;
+  verificationUrl?: string;
+  userCode?: string;
+  needsCode?: boolean;
+  instructions?: string;
+  connected: boolean;
+  stored: boolean;
+  error?: string;
+}
+
 export interface LoginSession {
   id: string;
   provider: ProviderSlug;
@@ -112,6 +138,7 @@ export interface LoginSession {
   status: LoginStatus;
   verificationUrl?: string;
   userCode?: string;
+  needsCode?: boolean;
   command?: string;
   instructions?: string;
   error?: string;
@@ -293,6 +320,72 @@ export interface TranscribeAudioResult {
   raw?: unknown;
 }
 
+export type UseAIOutput =
+  | 'text'
+  | 'media-text'
+  | 'image'
+  | 'video'
+  | 'audio'
+  | 'speech'
+  | 'pdf'
+  | 'doc'
+  | 'docx'
+  | 'excel'
+  | 'xlsx'
+  | 'csv'
+  | 'upload'
+  | 'transcribe';
+
+export interface GeneratedAsset {
+  kind: Exclude<UseAIOutput, 'text' | 'media-text' | 'upload' | 'transcribe'> | 'file';
+  filename: string;
+  mimeType: string;
+  bytes?: Uint8Array;
+  text?: string;
+  url?: string;
+  b64Json?: string;
+}
+
+export interface UseAIInput extends AiConnectorsOptions {
+  provider?: ProviderInput;
+  output?: UseAIOutput;
+  prompt?: string;
+  content?: string;
+  system?: string;
+  model?: string;
+  auth?: AuthOverride;
+  timeoutMs?: number;
+  filename?: string;
+  rows?: Array<Record<string, unknown>>;
+  media?: MediaInputPart[];
+  filePath?: string;
+  file?: Blob | Buffer | Uint8Array | ArrayBuffer;
+  mimeType?: string;
+  purpose?: string;
+  n?: number;
+  size?: string;
+  responseFormat?: 'url' | 'b64_json';
+  pollIntervalMs?: number;
+  waitForCompletion?: boolean;
+  duration?: number;
+  aspectRatio?: string;
+  resolution?: string;
+  image?: string;
+  referenceImages?: string[];
+  voiceId?: string;
+  language?: string;
+}
+
+export interface UseAIResult {
+  provider: ProviderSlug;
+  output: UseAIOutput;
+  model?: string;
+  text?: string;
+  asset?: GeneratedAsset;
+  assets?: GeneratedAsset[];
+  raw?: unknown;
+}
+
 export interface CliResult {
   ok: boolean;
   code: number | null;
@@ -328,6 +421,7 @@ export interface AiConnectors {
   listProviders(): Promise<ProviderStatus[]>;
   connectProvider(provider: ProviderSlug, options?: ConnectProviderOptions): Promise<LoginSession>;
   getLoginStatus(provider: ProviderSlug, sessionId: string): Promise<LoginSession | null>;
+  submitLoginCode(provider: ProviderSlug, sessionId: string, code: string): Promise<LoginSession | null>;
   disconnectProvider(provider: ProviderSlug): Promise<DisconnectResult>;
   generateText(input: GenerateTextInput): Promise<GenerateTextResult>;
   streamText(input: GenerateTextInput): AsyncIterable<GenerateTextChunk>;

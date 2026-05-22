@@ -2,7 +2,74 @@
 
 Short description: OAuth-first multi-provider AI connector for Node.js and Next.js apps.
 
-Description: Connect Codex, Claude Code, Gemini CLI, and Grok with one OAuth-first Node.js API. Manage provider sign-in, runtime status, model selection, text generation, Next.js routes, and Grok media workflows without exposing provider credentials in the browser.
+Description: Connect Codex, Anthropic, Google, and Grok with one package API. Manage sign-in, encrypted SQLite credential storage, model selection, text generation, and text-to-media/document workflows from Node.js, Next.js, or browser UI code through your app route.
+
+## Preferred API
+
+The package now exposes two high-level functions:
+
+```js
+import { connectAI, useAI } from '@ignitedaibusiness/ai-connectors';
+
+await connectAI({
+  provider: 'codex', // codex | anthropic | google | grok
+  setDefault: true,
+});
+
+const reply = await useAI({
+  provider: 'grok',
+  output: 'text',
+  prompt: 'Write a short customer support reply.',
+});
+
+const pdf = await useAI({
+  provider: 'codex',
+  output: 'pdf',
+  content: 'Invoice summary...',
+});
+```
+
+`connectAI()` is OAuth-first. For `codex`, `anthropic`, and `google`, it starts the provider CLI OAuth flow, opens/returns the browser login URL when the provider exposes one, then records the connected provider metadata in SQLite after sign-in succeeds. If a provider CLI asks for an authorization code, the returned result includes `needsCode: true` and the same session can be completed through the Next route's `submitCode` action.
+
+Optional `.env` values:
+
+```bash
+HRU_AI_HOME=.hru-ai
+HRU_AI_SQLITE_PATH=.hru-ai/providers.sqlite
+HRU_AI_SECRET_KEY=change-this-long-random-secret
+CODEX_MODEL=gpt-5.5
+CLAUDE_MODEL=opus
+GEMINI_MODEL=gemini-2.5-flash
+GROK_MODEL=grok-4.3
+```
+
+For browser/React usage, call the same names from client code and point them at your API route:
+
+```js
+import { connectAI, useAI } from '@ignitedaibusiness/ai-connectors';
+
+await connectAI({
+  provider: 'codex',
+  endpoint: '/api/ai',
+});
+
+const image = await useAI({
+  provider: 'grok',
+  endpoint: '/api/ai',
+  output: 'image',
+  prompt: 'A clean ecommerce product mockup',
+});
+```
+
+In Next.js App Router, expose the server route:
+
+```js
+import { createNextAiConnectorRoutes } from '@ignitedaibusiness/ai-connectors/next';
+
+export const { GET, POST, PATCH, DELETE } = createNextAiConnectorRoutes({
+  requireUser: async () => ({ userId: 'demo-user', role: 'admin' }),
+});
+```
 
 ## 0. Install
 
@@ -10,7 +77,7 @@ Description: Connect Codex, Claude Code, Gemini CLI, and Grok with one OAuth-fir
 npm i @ignitedaibusiness/ai-connectors
 ```
 
-This package targets Node.js `>=20`. Do not import it directly inside React browser components, because provider sign-in and CLI access are server-side concerns. React should call your own Node.js or Next.js API route, and that route should call this package.
+This package targets Node.js `>=20`. React/browser bundles use the package's browser export, which forwards `connectAI()` and `useAI()` to your API route. Provider CLIs and SQL storage still run server-side.
 
 Codex, Claude, and Gemini text generation use their provider CLIs. The package includes those CLIs as dependencies, but globally installed CLIs also work.
 
@@ -31,61 +98,40 @@ Sign-in summary:
 | `gemini` | Gemini CLI Google sign-in | `gemini` |
 | `grok` | Grok CLI browser sign-in | `grok` |
 
-### 1A. Create a Login Session
+### 1A. Start OAuth With One Function
 
-Codex, Claude, Gemini, and Grok handle browser sign-in inside their own CLIs. This package does not capture raw callback codes. The app creates a login session, shows the command/instructions to the user, and then checks whether the CLI sign-in has completed.
+Use `connectAI()` for OAuth. In browser/React it calls your API route, opens a new tab when a provider returns a login URL, and polls the same route until the provider is connected.
 
 ```js
-import { connectProvider, getLoginStatus } from '@ignitedaibusiness/ai-connectors';
+import { connectAI } from '@ignitedaibusiness/ai-connectors';
 
-const session = await connectProvider('gemini', {
-  authKind: 'cli_oauth',
+const result = await connectAI({
+  provider: 'gemini',
+  endpoint: '/api/ai',
   setDefault: true,
 });
 
-console.log(session.command);
-console.log(session.instructions);
-
-// After the user completes `gemini` sign-in in the terminal:
-const status = await getLoginStatus('gemini', session.id);
-console.log(status?.status); // "connected" means ready
+console.log(result.status); // "connected" means ready
 ```
 
-Provider-specific login session examples:
+Provider examples:
 
 ```js
-await connectProvider('codex', {
-  authKind: 'cli_oauth',
-  setDefault: true,
-});
-
-await connectProvider('claude', {
-  authKind: 'cli_oauth',
-  setDefault: true,
-});
-
-await connectProvider('gemini', {
-  authKind: 'cli_oauth',
-  setDefault: true,
-});
-
-await connectProvider('grok', {
-  authKind: 'cli_browser',
-  setDefault: true,
-});
+await connectAI({ provider: 'codex', endpoint: '/api/ai' });
+await connectAI({ provider: 'anthropic', endpoint: '/api/ai' });
+await connectAI({ provider: 'google', endpoint: '/api/ai' });
+await connectAI({ provider: 'grok', endpoint: '/api/ai' });
 ```
 
 ### 1B. What the User Does After Signup/Login
 
 The user flow is:
 
-1. Your app calls `connectProvider()` and receives a `LoginSession`.
-2. Your UI shows `session.command` and `session.instructions`.
-3. The user runs the provider command in a terminal.
-4. The provider opens the browser for signup/login.
-5. If the provider shows a verification code, the user pastes it into the provider CLI terminal prompt.
-6. Your app calls `getLoginStatus(provider, session.id)`.
-7. When the status becomes `"connected"`, the selected AI provider is ready to use.
+1. Your app calls `connectAI()`.
+2. Your API route starts the provider OAuth flow.
+3. The browser opens the provider login page when a URL is available.
+4. If the provider asks for an authorization code, submit it back to the same route with `action: "submitCode"`.
+5. When the status becomes `"connected"`, the selected AI provider is ready to use.
 
 ```js
 async function waitForConnection(provider, sessionId) {

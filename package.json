@@ -1,6 +1,6 @@
 {
   "name": "@ignitedaibusiness/ai-connectors",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Multi-provider AI connector package for Codex, Claude, Gemini, and Grok.",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -8,6 +8,10 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "browser": {
+        "types": "./dist/browser.d.ts",
+        "import": "./dist/browser.js"
+      },
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
@@ -23,6 +27,7 @@
       "require": "./dist/grok/index.cjs"
     }
   },
+  "browser": "./dist/browser.js",
   "bin": {
     "hru-ai": "dist/hru-ai.js"
   },

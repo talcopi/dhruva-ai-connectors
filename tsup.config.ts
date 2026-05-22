@@ -3,6 +3,7 @@ import { defineConfig } from 'tsup';
 export default defineConfig({
   entry: {
     index: 'src/index.ts',
+    browser: 'src/browser.ts',
     'adapters/next': 'src/adapters/next.ts',
     'grok/index': 'src/grok/index.ts',
     'hru-ai': 'bin/hru-ai.ts',
