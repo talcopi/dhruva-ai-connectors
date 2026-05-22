@@ -1,4 +1,4 @@
-import type { ConnectAIInput, ConnectAIResult, ProviderInput, ProviderSlug, UseAIInput, UseAIResult } from './types.js';
+import type { ConnectAIInput, ConnectAIResult, DisconnectResult, LogoutAIInput, ProviderInput, ProviderSlug, UseAIInput, UseAIResult } from './types.js';
 
 type BrowserWindow = {
   open?: (url?: string, target?: string, features?: string) => { closed?: boolean; location?: { href: string }; close?: () => void } | null;
@@ -106,6 +106,19 @@ export async function useAI(input: UseAIInput & { endpoint?: string }): Promise<
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data?.error || `useAI failed with HTTP ${response.status}`);
+  return data;
+}
+
+export async function logoutAI(input: LogoutAIInput): Promise<DisconnectResult> {
+  const provider = normalizeProvider(input.provider);
+  const endpoint = input.endpoint || '/api/ai/connect';
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'logoutAI', provider }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error || `logoutAI failed with HTTP ${response.status}`);
   return data;
 }
 

@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
-import { connectAI, normalizeProvider, useAI } from '../src/index.js';
+import { connectAI, logoutAI, normalizeProvider, useAI } from '../src/index.js';
 import { SQLiteProviderStore } from '../src/storage/sqlite-store.js';
 import { SQLiteSecretStore } from '../src/secrets/sqlite-secret-store.js';
 
@@ -61,6 +61,33 @@ describe('high-level API', () => {
 
       expect(result).toMatchObject({ provider: 'grok', status: 'connected', authKind: 'api_key', connected: true });
       expect(await secretStore.get('provider:grok:api_key')).toBe('xai-env-secret');
+      store.close();
+      secretStore.close();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('logoutAI removes provider metadata and encrypted credentials', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'hru-ai-logoutai-'));
+    try {
+      const dbPath = path.join(dir, 'providers.sqlite');
+      const store = new SQLiteProviderStore(dbPath);
+      const secretStore = new SQLiteSecretStore(dbPath, { encryptionKey: 'test-key' });
+
+      await connectAI({
+        provider: 'grok',
+        authKind: 'api_key',
+        apiKey: 'xai-test-secret',
+        cwd: dir,
+        store,
+        secretStore,
+      });
+      const result = await logoutAI({ provider: 'grok', cwd: dir, store, secretStore });
+
+      expect(result).toMatchObject({ provider: 'grok', ok: true, removedMetadata: true });
+      expect(await store.get('grok')).toBeNull();
+      expect(await secretStore.get('provider:grok:api_key')).toBeNull();
       store.close();
       secretStore.close();
     } finally {

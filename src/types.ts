@@ -119,6 +119,11 @@ export interface ConnectAIInput extends ConnectProviderOptions, AiConnectorsOpti
   onStatus?: (result: ConnectAIResult) => void;
 }
 
+export interface LogoutAIInput extends AiConnectorsOptions {
+  provider: ProviderInput;
+  endpoint?: string;
+}
+
 export interface ConnectAIResult {
   provider: ProviderSlug;
   status: LoginStatus;
@@ -153,6 +158,8 @@ export interface DisconnectResult {
   provider: ProviderSlug;
   ok: boolean;
   removedMetadata: boolean;
+  removedSecrets?: string[];
+  removedAuthHome?: boolean;
   details?: Record<string, unknown>;
 }
 
@@ -426,6 +433,7 @@ export interface AiConnectors {
   getLoginStatus(provider: ProviderSlug, sessionId: string): Promise<LoginSession | null>;
   submitLoginCode(provider: ProviderSlug, sessionId: string, code: string): Promise<LoginSession | null>;
   disconnectProvider(provider: ProviderSlug): Promise<DisconnectResult>;
+  logoutProvider(provider: ProviderSlug): Promise<DisconnectResult>;
   generateText(input: GenerateTextInput): Promise<GenerateTextResult>;
   streamText(input: GenerateTextInput): AsyncIterable<GenerateTextChunk>;
   generateTextFromMedia(input: GenerateMediaTextInput): Promise<GenerateTextResult>;

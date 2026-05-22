@@ -26,6 +26,15 @@ const GEMINI_URL_RE = /https:\/\/accounts\.google\.com\/o\/oauth2\/v2\/auth[^\s"
 
 const oauthSessions = new Map<string, OAuthSessionState>();
 
+export function cancelOAuthSessions(provider?: ProviderSlug): void {
+  for (const [id, session] of oauthSessions.entries()) {
+    if (provider && session.provider !== provider) continue;
+    session.status = 'cancelled';
+    closeSession(session);
+    oauthSessions.delete(id);
+  }
+}
+
 export async function startOAuthLogin({
   provider,
   authKind,

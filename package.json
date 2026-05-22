@@ -1,6 +1,6 @@
 {
   "name": "@ignitedaibusiness/ai-connectors",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Multi-provider AI connector package for Codex, Claude, Gemini, and Grok.",
   "type": "module",
   "repository": {
@@ -28,6 +28,11 @@
       "types": "./dist/adapters/next.d.ts",
       "import": "./dist/adapters/next.js",
       "require": "./dist/adapters/next.cjs"
+    },
+    "./express": {
+      "types": "./dist/adapters/express.d.ts",
+      "import": "./dist/adapters/express.js",
+      "require": "./dist/adapters/express.cjs"
     },
     "./grok": {
       "types": "./dist/grok/index.d.ts",
@@ -72,11 +77,13 @@
     "@anthropic-ai/claude-code": "^2.1.143",
     "@google/gemini-cli": "^0.42.0",
     "@openai/codex": "^0.130.0",
-    "better-sqlite3": "^12.10.0"
+    "better-sqlite3": "^12.10.0",
+    "express": "^5.2.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.6",
     "@types/node": "^24.0.0",
     "eslint": "^9.0.0",
     "prettier": "^3.0.0",

@@ -9,12 +9,14 @@ import type {
   GenerateTextInput,
   GenerateVideoInput,
   ProviderInput,
+  LogoutAIInput,
   TranscribeAudioInput,
   UseAIInput,
   UploadFileInput,
 } from './types.js';
 
 export { connectAI } from './connect-ai.js';
+export { logoutAI } from './logout-ai.js';
 export { useAI } from './use-ai.js';
 export { createAiConnectors, getDefaultConnectors } from './create-ai-connectors.js';
 export { normalizeProvider } from './provider-alias.js';
@@ -65,6 +67,10 @@ export async function disconnectProvider(provider: ProviderInput) {
   return getDefaultConnectors().disconnectProvider(normalizeProvider(provider));
 }
 
+export async function logoutProvider(provider: ProviderInput) {
+  return getDefaultConnectors().logoutProvider(normalizeProvider(provider));
+}
+
 export async function setDefaultProvider(provider: ProviderInput) {
   return getDefaultConnectors().setDefaultProvider(normalizeProvider(provider));
 }
@@ -101,4 +107,4 @@ export async function transcribeAudio(input: TranscribeAudioInput) {
   return getDefaultConnectors().transcribeAudio(input);
 }
 
-export type { ConnectAIInput, UseAIInput };
+export type { ConnectAIInput, LogoutAIInput, UseAIInput };

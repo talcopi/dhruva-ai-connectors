@@ -7,6 +7,7 @@ import { runtimeProviderStatus, runtimeStatus as readRuntimeStatus } from './run
 import { SQLiteProviderStore } from './storage/sqlite-store.js';
 import { SQLiteSecretStore } from './secrets/sqlite-secret-store.js';
 import { getOAuthLoginStatus, startOAuthLogin, submitOAuthCode } from './oauth-login.js';
+import { removeProviderConnection } from './provider-cleanup.js';
 import { generateText as generateTextRoot } from './generate-text.js';
 import { streamText as streamTextRoot } from './stream-text.js';
 import {
@@ -150,6 +151,7 @@ export function createAiConnectors(options: AiConnectorsOptions = {}): AiConnect
       (provider === 'gemini' ? env.GEMINI_API_KEY || env.GOOGLE_API_KEY : '');
     const oauthToken = connectOptions.oauthToken || (provider === 'claude' ? env.CLAUDE_CODE_OAUTH_TOKEN || '' : '');
     const authKind = connectOptions.authKind || (apiKey ? 'api_key' : oauthToken ? 'oauth_token' : definition.defaultAuthKind);
+    await removeProviderConnection({ provider, cwd, env, store, secretStore });
 
     if ((authKind === 'cli_oauth' || authKind === 'cli_browser') && !connectOptions.interactive) {
       const session = await startOAuthLogin({
@@ -253,16 +255,7 @@ export function createAiConnectors(options: AiConnectorsOptions = {}): AiConnect
   }
 
   async function disconnectProvider(provider: ProviderSlug): Promise<DisconnectResult> {
-    const existing = await store.get(provider);
-    await store.delete(provider);
-    return {
-      provider,
-      ok: true,
-      removedMetadata: !!existing,
-      details: {
-        note: 'CLI-managed credentials were not deleted. Remove provider auth files or run provider logout manually if needed.',
-      },
-    };
+    return removeProviderConnection({ provider, cwd, env, store, secretStore });
   }
 
   async function setDefaultProvider(provider: ProviderSlug): Promise<void> {
@@ -336,6 +329,7 @@ export function createAiConnectors(options: AiConnectorsOptions = {}): AiConnect
     getLoginStatus,
     submitLoginCode,
     disconnectProvider,
+    logoutProvider: disconnectProvider,
     generateText,
     streamText,
     generateTextFromMedia,

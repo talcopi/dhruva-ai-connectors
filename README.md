@@ -6,10 +6,11 @@ Description: Connect Codex, Anthropic, Google, and Grok with one package API. Ma
 
 ## Preferred API
 
-Use two high-level functions:
+Use three high-level functions:
 
 - `connectAI()` starts OAuth/login and stores the provider connection metadata server-side.
 - `useAI()` runs text, image, video, audio, PDF, DOC, Excel, or CSV generation after a provider is connected.
+- `logoutAI()` removes one provider's saved metadata, encrypted secret rows, active login session, and package-managed CLI OAuth files.
 
 Preferred public provider names:
 
@@ -40,7 +41,7 @@ const pdf = await useAI({
 });
 ```
 
-`connectAI()` is OAuth-first. For `codex`, `anthropic`, and `google`, it starts the provider CLI OAuth flow, opens/returns the browser login URL when the provider exposes one, then records the connected provider metadata in encrypted SQLite after sign-in succeeds. If a provider CLI asks for an authorization code, the returned result includes `needsCode: true`; submit that code with the same `connectAI()` function by passing `sessionId` and `code`.
+`connectAI()` is OAuth-first. For `codex`, `anthropic`, and `google`, it starts the provider CLI OAuth flow, opens/returns the browser login URL when the provider exposes one, then records the connected provider metadata in encrypted SQLite after sign-in succeeds. If you connect the same provider again, the package first removes that provider's old saved OAuth files and secret rows, then starts a fresh login. If a provider CLI asks for an authorization code, the returned result includes `needsCode: true`; submit that code with the same `connectAI()` function by passing `sessionId` and `code`.
 
 Optional `.env` values:
 
@@ -121,6 +122,18 @@ export function AiPanel() {
 }
 ```
 
+React-only projects can use the bundled Express adapter for the server route. `express` is installed automatically with this package.
+
+```js
+// server.mjs
+import { startExpressAiConnectorServer } from '@ignitedaibusiness/ai-connectors/express';
+
+await startExpressAiConnectorServer({
+  port: 3037,
+  basePath: '/api/ai',
+});
+```
+
 ### Node.js
 
 Use this pattern for Express/Fastify/custom Node servers. The React/browser app calls this route; the route starts OAuth, checks status, accepts provider authorization codes, and runs `useAI()`.
@@ -130,6 +143,7 @@ import express from 'express';
 import {
   connectAI,
   createAiConnectors,
+  logoutAI,
   useAI,
 } from '@ignitedaibusiness/ai-connectors';
 
@@ -162,6 +176,11 @@ app.post('/api/ai', async (req, res, next) => {
 
     if (body.action === 'useAI') {
       const result = await useAI(body.input || body);
+      return res.json(result);
+    }
+
+    if (body.action === 'logoutAI') {
+      const result = await logoutAI({ provider: body.provider });
       return res.json(result);
     }
 
@@ -954,7 +973,8 @@ npx hru-ai logout gemini
 - Keep provider sign-in and provider credentials on the server.
 - Do not expose provider credentials in a React/browser bundle.
 - `connectProvider()` stores safe metadata such as provider slug, auth mode, and connection status.
-- `disconnectProvider()` deletes package metadata only. It does not delete provider CLI credential files. Use the provider CLI logout command when you need to remove CLI-managed credentials.
+- `connectProvider()` and `connectAI()` delete the same provider's old package-managed connection before starting a fresh login.
+- `disconnectProvider()`, `logoutProvider()`, and `logoutAI()` delete only the selected provider's package metadata, encrypted secret rows, active login process, and package-managed CLI OAuth directory. They do not delete the whole SQLite database or other providers.
 - Media helpers are currently implemented for Grok server-side media mode. Use `useAI({ output: "text" })` for Codex, Anthropic, and Google text-only calls. For full provider-native multimodal support, use each provider's official SDK/API.
 
 ## 10. Official Docs Checked
