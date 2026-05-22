@@ -20,7 +20,7 @@ export async function generateCodexText(input: GenerateTextInput): Promise<Gener
   const prompt = buildPrompt(input, 'Answer the user. Do not modify files.');
   const result = await runExecutable(
     'codex',
-    ['exec', '--sandbox', 'read-only', '--approval-policy', 'never', '--model', model, prompt],
+    ['exec', '--sandbox', 'read-only', '--model', model, prompt],
     {
       cwd: input.cwd,
       env: codexCliEnv({ OPENAI_API_KEY: input.auth?.apiKey || process.env.OPENAI_API_KEY }),

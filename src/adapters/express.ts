@@ -4,7 +4,7 @@ import { createAiConnectors } from '../create-ai-connectors.js';
 import { connectAI } from '../connect-ai.js';
 import { normalizeProvider } from '../provider-alias.js';
 import { useAI } from '../use-ai.js';
-import type { AiConnectorsOptions } from '../types.js';
+import type { AgentToolRegistry, AiConnectorsOptions } from '../types.js';
 
 type ExpressLikeApp = {
   use: (...args: any[]) => any;
@@ -28,9 +28,10 @@ type ResponseLike = {
   json(data: unknown): void;
 };
 
-export type ExpressAiConnectorOptions = AiConnectorsOptions & {
+export type ExpressAiConnectorOptions = Omit<AiConnectorsOptions, 'tools'> & {
   jsonLimit?: string;
   basePath?: string;
+  tools?: AgentToolRegistry | ((req: RequestLike) => AgentToolRegistry | Promise<AgentToolRegistry>);
 };
 
 export type ExpressAiConnectorServer = {
@@ -42,7 +43,7 @@ export type ExpressAiConnectorServer = {
 
 export function createExpressAiConnectorRouter(options: ExpressAiConnectorOptions = {}): ExpressLikeRouter {
   const router = express.Router() as ExpressLikeRouter;
-  const connectors = createAiConnectors(options);
+  const connectors = createAiConnectors(connectorOptions(options));
   router.use(express.json({ limit: options.jsonLimit || '50mb' }));
 
   router.get('/runtime', asyncHandler(async (_req: RequestLike, res: ResponseLike) => {
@@ -57,6 +58,9 @@ export function createExpressAiConnectorRouter(options: ExpressAiConnectorOption
     const body = req.body || {};
     if (body.action === 'connectAI') return res.json(await connectAI({ ...(body.input || body), ...options }));
     if (body.action === 'useAI') return res.json(serializeUseAIResult(await useAI({ ...(body.input || body), ...options })));
+    if (body.action === 'workflow' || body.action === 'runAgentWorkflow' || body.action === 'runAITools') {
+      return res.json(await connectors.runAgentWorkflow({ ...(body.input || body), tools: await resolveTools(options.tools, req) }));
+    }
     if (body.action === 'connect') return res.json(await connectors.connectProvider(normalizeProvider(body.provider), body.options || {}));
     if (body.action === 'logoutAI' || body.action === 'logout' || body.action === 'disconnect') {
       return res.json(await connectors.disconnectProvider(normalizeProvider(body.provider)));
@@ -94,6 +98,25 @@ export function createExpressAiConnectorRouter(options: ExpressAiConnectorOption
   }));
 
   return router;
+}
+
+function connectorOptions(options: ExpressAiConnectorOptions): AiConnectorsOptions {
+  return {
+    cwd: options.cwd,
+    homeDir: options.homeDir,
+    defaultProvider: options.defaultProvider,
+    store: options.store,
+    secretStore: options.secretStore,
+    env: options.env,
+    tools: typeof options.tools === 'function' ? undefined : options.tools,
+  };
+}
+
+async function resolveTools(
+  tools: ExpressAiConnectorOptions['tools'],
+  req: RequestLike
+): Promise<AgentToolRegistry | undefined> {
+  return typeof tools === 'function' ? tools(req) : tools;
 }
 
 export function createExpressAiConnectorApp(options: ExpressAiConnectorOptions = {}): ExpressLikeApp {

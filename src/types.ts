@@ -13,6 +13,9 @@ export type LoginStatus = 'starting' | 'pending' | 'connected' | 'failed' | 'can
 export type GenerateMode = 'answer' | 'plan' | 'code';
 
 export type ToolMode = 'none' | 'readonly' | 'provider_default';
+export type MediaGenerationMode = 'provider' | 'agent-local';
+export type LocalArtifactKind = 'image' | 'video' | 'audio' | 'pdf' | 'doc' | 'docx' | 'excel' | 'xlsx' | 'csv' | 'file';
+export type AgentPermissionMode = 'write' | 'full';
 
 export interface ProviderDefinition {
   slug: ProviderSlug;
@@ -190,6 +193,51 @@ export interface GenerateTextResult {
   raw?: unknown;
 }
 
+export interface AgentArtifactRunnerInput {
+  provider: ProviderSlug;
+  model: string;
+  prompt: string;
+  cwd: string;
+  outputDir: string;
+  targetPath: string;
+  timeoutMs: number;
+  auth?: AuthOverride;
+  env?: NodeJS.ProcessEnv;
+  permissionMode?: AgentPermissionMode;
+}
+
+export type AgentArtifactRunner = (input: AgentArtifactRunnerInput) => Promise<CliResult>;
+
+export interface GenerateLocalArtifactInput {
+  provider?: ProviderSlug;
+  prompt: string;
+  kind: LocalArtifactKind;
+  model?: string;
+  auth?: AuthOverride;
+  timeoutMs?: number;
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  filename?: string;
+  outputDir?: string;
+  mimeType?: string;
+  maxBytes?: number;
+  instructions?: string;
+  permissionMode?: AgentPermissionMode;
+  artifactRunner?: AgentArtifactRunner;
+}
+
+export interface GenerateLocalArtifactResult {
+  provider: ProviderSlug;
+  model: string;
+  kind: LocalArtifactKind;
+  filename: string;
+  filePath: string;
+  mimeType: string;
+  bytes: Uint8Array;
+  text?: string;
+  raw?: unknown;
+}
+
 export interface GenerateTextChunk {
   provider: ProviderSlug;
   model?: string;
@@ -259,6 +307,13 @@ export interface GenerateImageInput {
   model?: string;
   auth?: AuthOverride;
   timeoutMs?: number;
+  cwd?: string;
+  filename?: string;
+  outputDir?: string;
+  mediaMode?: MediaGenerationMode;
+  instructions?: string;
+  permissionMode?: AgentPermissionMode;
+  artifactRunner?: AgentArtifactRunner;
   n?: number;
   size?: string;
   responseFormat?: 'url' | 'b64_json';
@@ -277,6 +332,13 @@ export interface GenerateVideoInput {
   model?: string;
   auth?: AuthOverride;
   timeoutMs?: number;
+  cwd?: string;
+  filename?: string;
+  outputDir?: string;
+  mediaMode?: MediaGenerationMode;
+  instructions?: string;
+  permissionMode?: AgentPermissionMode;
+  artifactRunner?: AgentArtifactRunner;
   pollIntervalMs?: number;
   waitForCompletion?: boolean;
   duration?: number;
@@ -299,6 +361,13 @@ export interface GenerateSpeechInput {
   provider?: ProviderSlug;
   auth?: AuthOverride;
   timeoutMs?: number;
+  cwd?: string;
+  filename?: string;
+  outputDir?: string;
+  mediaMode?: MediaGenerationMode;
+  instructions?: string;
+  permissionMode?: AgentPermissionMode;
+  artifactRunner?: AgentArtifactRunner;
   text: string;
   voiceId?: string;
   language?: string;
@@ -354,6 +423,7 @@ export interface GeneratedAsset {
   text?: string;
   url?: string;
   b64Json?: string;
+  filePath?: string;
 }
 
 export interface UseAIInput extends AiConnectorsOptions {
@@ -375,6 +445,11 @@ export interface UseAIInput extends AiConnectorsOptions {
   n?: number;
   size?: string;
   responseFormat?: 'url' | 'b64_json';
+  mediaMode?: MediaGenerationMode;
+  outputDir?: string;
+  instructions?: string;
+  permissionMode?: AgentPermissionMode;
+  artifactRunner?: AgentArtifactRunner;
   pollIntervalMs?: number;
   waitForCompletion?: boolean;
   duration?: number;
@@ -411,6 +486,71 @@ export interface RunCliOptions {
   input?: string;
 }
 
+export type AgentToolHandler = (
+  args: Record<string, unknown>,
+  context: {
+    instruction: string;
+    provider: ProviderSlug;
+    stepIndex: number;
+    previousSteps: AgentToolStep[];
+  }
+) => unknown | Promise<unknown>;
+
+export interface AgentToolDefinition {
+  description: string;
+  parameters?: unknown;
+  execute: AgentToolHandler;
+}
+
+export type AgentToolRegistry = Record<string, AgentToolHandler | AgentToolDefinition>;
+
+export interface AgentToolDecision {
+  tool?: string;
+  name?: string;
+  args?: Record<string, unknown>;
+  arguments?: Record<string, unknown>;
+  final?: string;
+}
+
+export interface AgentWorkflowPlannerInput {
+  provider: ProviderSlug;
+  model?: string;
+  prompt: string;
+  stepIndex: number;
+  previousSteps: AgentToolStep[];
+  toolNames: string[];
+}
+
+export type AgentWorkflowPlanner = (input: AgentWorkflowPlannerInput) => Promise<string | AgentToolDecision>;
+
+export interface RunAgentWorkflowInput extends AiConnectorsOptions {
+  provider?: ProviderInput;
+  instruction: string;
+  system?: string;
+  model?: string;
+  auth?: AuthOverride;
+  timeoutMs?: number;
+  maxSteps?: number;
+  tools?: AgentToolRegistry;
+  planner?: AgentWorkflowPlanner;
+}
+
+export interface AgentToolStep {
+  index: number;
+  tool: string;
+  args: Record<string, unknown>;
+  result?: unknown;
+  error?: string;
+}
+
+export interface RunAgentWorkflowResult {
+  provider: ProviderSlug;
+  model?: string;
+  steps: AgentToolStep[];
+  final?: string;
+  raw?: unknown;
+}
+
 export interface SpawnCliOptions {
   cwd?: string;
   env?: Record<string, string | undefined>;
@@ -424,6 +564,7 @@ export interface AiConnectorsOptions {
   store?: ProviderStore;
   secretStore?: SecretStore;
   env?: NodeJS.ProcessEnv;
+  tools?: AgentToolRegistry;
 }
 
 export interface AiConnectors {
@@ -441,6 +582,8 @@ export interface AiConnectors {
   generateImage(input: GenerateImageInput): Promise<GenerateImageResult>;
   generateVideo(input: GenerateVideoInput): Promise<GenerateVideoResult>;
   generateSpeech(input: GenerateSpeechInput): Promise<GenerateSpeechResult>;
+  generateLocalArtifact(input: GenerateLocalArtifactInput): Promise<GenerateLocalArtifactResult>;
+  runAgentWorkflow(input: RunAgentWorkflowInput): Promise<RunAgentWorkflowResult>;
   transcribeAudio(input: TranscribeAudioInput): Promise<TranscribeAudioResult>;
   setDefaultProvider(provider: ProviderSlug): Promise<void>;
   runInteractiveLogin(provider: ProviderSlug): Promise<number | null>;

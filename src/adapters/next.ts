@@ -2,12 +2,13 @@ import { createAiConnectors } from '../create-ai-connectors.js';
 import { connectAI } from '../connect-ai.js';
 import { normalizeProvider } from '../provider-alias.js';
 import { useAI } from '../use-ai.js';
-import type { AiConnectorsOptions } from '../types.js';
+import type { AgentToolRegistry, AiConnectorsOptions } from '../types.js';
 
 type RequireUserResult = { userId: string; role?: string } | null;
 
-type NextRouteOptions = AiConnectorsOptions & {
+type NextRouteOptions = Omit<AiConnectorsOptions, 'tools'> & {
   requireUser?: (request: Request) => Promise<RequireUserResult>;
+  tools?: AgentToolRegistry | ((request: Request) => AgentToolRegistry | Promise<AgentToolRegistry>);
 };
 
 function json(data: unknown, init?: ResponseInit) {
@@ -28,7 +29,7 @@ async function guard(request: Request, requireUser?: NextRouteOptions['requireUs
 }
 
 export function createNextAiConnectorRoutes(options: NextRouteOptions = {}) {
-  const connectors = createAiConnectors(options);
+  const connectors = createAiConnectors(connectorOptions(options));
 
   return {
     async GET(request: Request) {
@@ -45,6 +46,9 @@ export function createNextAiConnectorRoutes(options: NextRouteOptions = {}) {
       const body = await request.json().catch(() => ({}));
       if (body.action === 'connectAI') return json(await connectAI({ ...(body.input || body), ...options }));
       if (body.action === 'useAI') return json(serializeUseAIResult(await useAI({ ...(body.input || body), ...options })));
+      if (body.action === 'workflow' || body.action === 'runAgentWorkflow' || body.action === 'runAITools') {
+        return json(await connectors.runAgentWorkflow({ ...(body.input || body), tools: await resolveTools(options.tools, request) }));
+      }
       if (body.action === 'connect') return json(await connectors.connectProvider(normalizeProvider(body.provider), body.options || {}));
       if (body.action === 'logoutAI' || body.action === 'logout' || body.action === 'disconnect') {
         return json(await connectors.disconnectProvider(normalizeProvider(body.provider)));
@@ -87,6 +91,25 @@ export function createNextAiConnectorRoutes(options: NextRouteOptions = {}) {
       return json(await connectors.disconnectProvider(normalizeProvider(body.provider)));
     },
   };
+}
+
+function connectorOptions(options: NextRouteOptions): AiConnectorsOptions {
+  return {
+    cwd: options.cwd,
+    homeDir: options.homeDir,
+    defaultProvider: options.defaultProvider,
+    store: options.store,
+    secretStore: options.secretStore,
+    env: options.env,
+    tools: typeof options.tools === 'function' ? undefined : options.tools,
+  };
+}
+
+async function resolveTools(
+  tools: NextRouteOptions['tools'],
+  request: Request
+): Promise<AgentToolRegistry | undefined> {
+  return typeof tools === 'function' ? tools(request) : tools;
 }
 
 function serializeUseAIResult(result: any) {

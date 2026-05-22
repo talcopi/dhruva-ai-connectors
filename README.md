@@ -6,11 +6,12 @@ Description: Connect Codex, Anthropic, Google, and Grok with one package API. Ma
 
 ## Preferred API
 
-Use three high-level functions:
+Use four high-level functions:
 
 - `connectAI()` starts OAuth/login and stores the provider connection metadata server-side.
 - `useAI()` runs text, image, video, audio, PDF, DOC, Excel, or CSV generation after a provider is connected.
 - `logoutAI()` removes one provider's saved metadata, encrypted secret rows, active login session, and package-managed CLI OAuth files.
+- `runAgentWorkflow()` maps your own Node/Next functions as tools, lets the selected agent choose the next function, and executes the calls in sequence.
 
 Preferred public provider names:
 
@@ -21,7 +22,7 @@ type AIProvider = 'codex' | 'anthropic' | 'google' | 'grok';
 Quick server-side example:
 
 ```js
-import { connectAI, useAI } from '@ignitedaibusiness/ai-connectors';
+import { connectAI, runAgentWorkflow, useAI } from '@ignitedaibusiness/ai-connectors';
 
 await connectAI({
   provider: 'codex', // codex | anthropic | google | grok
@@ -38,6 +39,16 @@ const pdf = await useAI({
   provider: 'codex',
   output: 'pdf',
   content: 'Invoice summary...',
+});
+
+const workflow = await runAgentWorkflow({
+  provider: 'google',
+  instruction: 'Find the lead, create an invoice, then notify the customer.',
+  tools: {
+    findLead: async ({ phone }) => ({ id: 'lead_123', email: 'a@example.com' }),
+    createInvoice: async ({ leadId }) => ({ invoiceId: 'inv_456', leadId }),
+    sendEmail: async ({ invoiceId }) => ({ sent: true, invoiceId }),
+  },
 });
 ```
 
@@ -144,6 +155,7 @@ import {
   connectAI,
   createAiConnectors,
   logoutAI,
+  runAgentWorkflow,
   useAI,
 } from '@ignitedaibusiness/ai-connectors';
 
@@ -176,6 +188,17 @@ app.post('/api/ai', async (req, res, next) => {
 
     if (body.action === 'useAI') {
       const result = await useAI(body.input || body);
+      return res.json(result);
+    }
+
+    if (body.action === 'workflow') {
+      const result = await runAgentWorkflow({
+        ...(body.input || body),
+        tools: {
+          findLead: async ({ phone }) => ({ id: 'lead_123', phone }),
+          createTask: async ({ leadId, title }) => ({ id: 'task_456', leadId, title }),
+        },
+      });
       return res.json(result);
     }
 
@@ -228,6 +251,16 @@ import { createNextAiConnectorRoutes } from '@ignitedaibusiness/ai-connectors/ne
 
 export const { GET, POST, PATCH, DELETE } = createNextAiConnectorRoutes({
   requireUser: async () => ({ userId: 'demo-user', role: 'admin' }),
+  tools: {
+    findLead: {
+      description: 'Find a CRM lead by phone number.',
+      execute: async ({ phone }) => ({ id: 'lead_123', phone }),
+    },
+    createTask: {
+      description: 'Create a follow-up task.',
+      execute: async ({ leadId, title }) => ({ id: 'task_456', leadId, title }),
+    },
+  },
 });
 ```
 
@@ -287,10 +320,10 @@ Use any output type:
 
 ```js
 const image = await useAI({
-  provider: 'grok',
+  provider: 'google',
   endpoint: '/api/ai',
   output: 'image',
-  prompt: 'A clean ecommerce product mockup',
+  prompt: 'Create a clean ecommerce product mockup as a local SVG image.',
 });
 
 const doc = await useAI({
@@ -300,6 +333,8 @@ const doc = await useAI({
   prompt: 'Create a short project brief.',
 });
 ```
+
+For `codex`, `anthropic`, and `google`, image/video/audio outputs use the selected CLI agent to create a local artifact file in `.hru-ai/artifacts` and return it as a browser-displayable asset. For `grok`, provider API media remains the default when `XAI_API_KEY` is connected; pass `mediaMode: "agent-local"` if you want Grok CLI local artifact mode instead.
 
 ## 0. Install
 
@@ -715,14 +750,14 @@ const data = await useAI({
 console.log(data.text);
 ```
 
-The same Next route can also call media actions when your server is configured for them:
+The same Next route can also call media actions. For Google/Anthropic/Codex this creates a local CLI artifact; for Grok it uses Grok API media when configured:
 
 ```js
 const image = await useAI({
-  provider: 'grok',
+  provider: 'google',
   endpoint: '/api/ai',
   output: 'image',
-  prompt: 'A clean CRM dashboard mockup',
+  prompt: 'A clean CRM dashboard mockup as a local SVG',
 });
 
 console.log(image.assets?.[0]?.url);
@@ -789,7 +824,24 @@ const answer = await useAI({
 console.log(answer.text);
 ```
 
-Media helper examples below assume your server has already been configured for Grok media calls by the app owner. The end user does not need to enter any provider secret.
+Media output has two modes:
+
+- `grok` defaults to provider API media mode when `XAI_API_KEY` is connected.
+- `codex`, `anthropic`, and `google` default to `agent-local` mode for image/video/audio: the selected CLI agent writes a local file under `.hru-ai/artifacts`, and the package returns that file as `asset`/`assets` with `bytes`, `mimeType`, `filename`, and `filePath`.
+
+If you need a binary MP4 or real voice file from local tools, pass a filename and allow fuller local tooling:
+
+```js
+const localVideo = await useAI({
+  provider: 'google',
+  output: 'video',
+  prompt: 'Create a short product intro animation.',
+  filename: 'intro.mp4',
+  permissionMode: 'full',
+});
+
+console.log(localVideo.asset?.filePath);
+```
 
 ### 6A. Send an Image to AI
 
@@ -897,33 +949,30 @@ await writeFile('welcome.mp3', speech.audio);
 ### 6E. Generate an AI Image
 
 ```js
-import { generateImage } from '@ignitedaibusiness/ai-connectors';
+import { useAI } from '@ignitedaibusiness/ai-connectors';
 
-const image = await generateImage({
-  provider: 'grok',
-  model: 'grok-imagine-image',
-  prompt: 'A clean SaaS dashboard product mockup, white background',
+const image = await useAI({
+  provider: 'google',
+  output: 'image',
+  prompt: 'Create a clean SaaS dashboard mockup as a polished local SVG.',
 });
 
-console.log(image.images[0]?.url);
+console.log(image.assets?.[0]?.filename);
+console.log(image.assets?.[0]?.url);
 ```
 
 ### 6F. Generate an AI Video
 
 ```js
-import { generateVideo } from '@ignitedaibusiness/ai-connectors';
+import { useAI } from '@ignitedaibusiness/ai-connectors';
 
-const video = await generateVideo({
-  provider: 'grok',
-  model: 'grok-imagine-video',
-  prompt: 'A 5 second product intro animation for a CRM dashboard',
-  duration: 5,
-  aspectRatio: '16:9',
-  resolution: '720p',
-  waitForCompletion: true,
+const video = await useAI({
+  provider: 'anthropic',
+  output: 'video',
+  prompt: 'Create a browser-playable animated product intro for a CRM dashboard.',
 });
 
-console.log(video.videoUrl);
+console.log(video.asset?.filePath);
 ```
 
 Image-to-video:
@@ -938,7 +987,50 @@ await generateVideo({
 });
 ```
 
-## 7. Streaming Text
+## 7. Agent Function Workflows
+
+Use `runAgentWorkflow()` when your app wants the selected AI agent to call your own functions in order. The functions run on your server, so this works in Node.js, Express, and Next.js routes.
+
+```js
+import { runAgentWorkflow } from '@ignitedaibusiness/ai-connectors';
+
+const result = await runAgentWorkflow({
+  provider: 'anthropic',
+  instruction: 'Look up the lead, create a callback task, then send a summary.',
+  tools: {
+    findLead: {
+      description: 'Find a lead by phone.',
+      parameters: { type: 'object', properties: { phone: { type: 'string' } } },
+      execute: async ({ phone }) => crm.findLeadByPhone(phone),
+    },
+    createTask: {
+      description: 'Create a CRM task.',
+      execute: async ({ leadId, title }) => crm.createTask({ leadId, title }),
+    },
+    sendSummary: {
+      description: 'Send a summary message.',
+      execute: async ({ leadId, message }) => crm.sendMessage({ leadId, message }),
+    },
+  },
+});
+
+console.log(result.steps);
+console.log(result.final);
+```
+
+From React/browser, register the tools on your server route and call only the instruction from the client:
+
+```js
+import { runAgentWorkflow } from '@ignitedaibusiness/ai-connectors';
+
+await runAgentWorkflow({
+  provider: 'google',
+  endpoint: '/api/ai',
+  instruction: 'Find lead +15550001111 and create a follow-up task for tomorrow.',
+});
+```
+
+## 8. Streaming Text
 
 The current lower-level `streamText()` wrapper yields the provider result as chunks. Streaming uses the internal CLI provider slug for Claude/Gemini.
 
@@ -954,7 +1046,7 @@ for await (const chunk of streamText({
 }
 ```
 
-## 8. CLI Commands
+## 9. CLI Commands
 
 ```bash
 npx hru-ai status
@@ -968,16 +1060,18 @@ npx hru-ai doctor gemini
 npx hru-ai logout gemini
 ```
 
-## 9. Important Security Notes
+## 10. Important Security Notes
 
 - Keep provider sign-in and provider credentials on the server.
 - Do not expose provider credentials in a React/browser bundle.
 - `connectProvider()` stores safe metadata such as provider slug, auth mode, and connection status.
 - `connectProvider()` and `connectAI()` delete the same provider's old package-managed connection before starting a fresh login.
 - `disconnectProvider()`, `logoutProvider()`, and `logoutAI()` delete only the selected provider's package metadata, encrypted secret rows, active login process, and package-managed CLI OAuth directory. They do not delete the whole SQLite database or other providers.
-- Media helpers are currently implemented for Grok server-side media mode. Use `useAI({ output: "text" })` for Codex, Anthropic, and Google text-only calls. For full provider-native multimodal support, use each provider's official SDK/API.
+- Codex, Anthropic, and Google media outputs in this package are CLI-created local artifacts, not provider-native image/video/audio APIs.
+- Use `permissionMode: "full"` only when you trust the prompt and workspace because it can let the local agent run shell commands for encoders or converters.
+- For full provider-native multimodal generation, use each provider's official SDK/API or Grok API media mode where configured.
 
-## 10. Official Docs Checked
+## 11. Official Docs Checked
 
 - Codex CLI: https://github.com/openai/codex/tree/main/codex-rs
 - Codex app-server auth surface: https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md

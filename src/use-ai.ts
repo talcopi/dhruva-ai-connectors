@@ -41,6 +41,13 @@ export async function useAI(input: UseAIInput): Promise<UseAIResult> {
       model: input.model,
       auth: input.auth,
       timeoutMs: input.timeoutMs,
+      cwd: input.cwd,
+      filename: input.filename,
+      outputDir: input.outputDir,
+      mediaMode: input.mediaMode,
+      instructions: input.instructions,
+      permissionMode: input.permissionMode,
+      artifactRunner: input.artifactRunner,
       n: input.n,
       size: input.size,
       responseFormat: input.responseFormat,
@@ -51,10 +58,13 @@ export async function useAI(input: UseAIInput): Promise<UseAIResult> {
       model: result.model,
       assets: result.images.map((image, index) => ({
         kind: 'image',
-        filename: input.filename || `image-${index + 1}.png`,
-        mimeType: 'image/png',
+        filename: input.filename || rawFilename(image.raw, `image-${index + 1}.png`),
+        mimeType: rawMimeType(image.raw, image.url, 'image/png'),
         url: image.url,
         b64Json: image.b64Json,
+        text: rawText(image.raw),
+        bytes: rawBytes(image.raw),
+        filePath: rawFilePath(image.raw),
       })),
       raw: result.raw,
     };
@@ -67,6 +77,13 @@ export async function useAI(input: UseAIInput): Promise<UseAIResult> {
       model: input.model,
       auth: input.auth,
       timeoutMs: input.timeoutMs,
+      cwd: input.cwd,
+      filename: input.filename,
+      outputDir: input.outputDir,
+      mediaMode: input.mediaMode,
+      instructions: input.instructions,
+      permissionMode: input.permissionMode,
+      artifactRunner: input.artifactRunner,
       pollIntervalMs: input.pollIntervalMs,
       waitForCompletion: input.waitForCompletion,
       duration: input.duration,
@@ -80,7 +97,15 @@ export async function useAI(input: UseAIInput): Promise<UseAIResult> {
       output,
       model: result.model,
       asset: result.videoUrl
-        ? { kind: 'video', filename: input.filename || 'video.mp4', mimeType: 'video/mp4', url: result.videoUrl }
+        ? {
+            kind: 'video',
+            filename: input.filename || rawFilename(result.raw, 'video.mp4'),
+            mimeType: rawMimeType(result.raw, result.videoUrl, 'video/mp4'),
+            url: result.videoUrl,
+            text: rawText(result.raw),
+            bytes: rawBytes(result.raw),
+            filePath: rawFilePath(result.raw),
+          }
         : undefined,
       raw: result.raw,
     };
@@ -93,6 +118,13 @@ export async function useAI(input: UseAIInput): Promise<UseAIResult> {
       model: input.model,
       auth: input.auth,
       timeoutMs: input.timeoutMs,
+      cwd: input.cwd,
+      filename: input.filename,
+      outputDir: input.outputDir,
+      mediaMode: input.mediaMode,
+      instructions: input.instructions,
+      permissionMode: input.permissionMode,
+      artifactRunner: input.artifactRunner,
       voiceId: input.voiceId,
       language: input.language,
     });
@@ -101,9 +133,11 @@ export async function useAI(input: UseAIInput): Promise<UseAIResult> {
       output,
       asset: {
         kind: 'audio',
-        filename: input.filename || 'speech.mp3',
+        filename: input.filename || rawFilename(result.raw, filenameForContentType(result.contentType, 'speech.mp3')),
         mimeType: result.contentType,
         bytes: result.audio,
+        text: result.contentType.startsWith('text/') ? new TextDecoder().decode(result.audio) : undefined,
+        filePath: rawFilePath(result.raw),
       },
       raw: result.raw,
     };
@@ -245,6 +279,40 @@ function csvCell(value: unknown): string {
 
 function textAsset(kind: GeneratedAsset['kind'], filename: string, mimeType: string, text: string): GeneratedAsset {
   return { kind, filename, mimeType, text, bytes: new TextEncoder().encode(text) };
+}
+
+function rawMimeType(raw: unknown, url: string | undefined, fallback: string): string {
+  const mimeType = raw && typeof raw === 'object' ? (raw as { mimeType?: string }).mimeType : '';
+  if (mimeType) return mimeType;
+  if (url?.startsWith('data:')) return url.slice(5, url.indexOf(';') > -1 ? url.indexOf(';') : undefined) || fallback;
+  return fallback;
+}
+
+function rawFilename(raw: unknown, fallback: string): string {
+  const filename = raw && typeof raw === 'object' ? (raw as { filename?: string }).filename : '';
+  if (filename) return filename;
+  const mimeType = raw && typeof raw === 'object' ? (raw as { mimeType?: string }).mimeType : '';
+  if (mimeType === 'image/svg+xml') return fallback.replace(/\.[^.]+$/, '.svg');
+  return fallback;
+}
+
+function rawText(raw: unknown): string | undefined {
+  return raw && typeof raw === 'object' ? (raw as { text?: string }).text : undefined;
+}
+
+function rawBytes(raw: unknown): Uint8Array | undefined {
+  const bytes = raw && typeof raw === 'object' ? (raw as { bytes?: Uint8Array | Buffer }).bytes : undefined;
+  return bytes ? new Uint8Array(bytes) : undefined;
+}
+
+function rawFilePath(raw: unknown): string | undefined {
+  return raw && typeof raw === 'object' ? (raw as { filePath?: string }).filePath : undefined;
+}
+
+function filenameForContentType(contentType: string, fallback: string): string {
+  if (contentType.startsWith('text/')) return fallback.replace(/\.[^.]+$/, '.txt');
+  if (contentType.includes('ssml')) return fallback.replace(/\.[^.]+$/, '.ssml');
+  return fallback;
 }
 
 function paragraphHtml(text: string): string {

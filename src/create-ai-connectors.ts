@@ -8,6 +8,7 @@ import { SQLiteProviderStore } from './storage/sqlite-store.js';
 import { SQLiteSecretStore } from './secrets/sqlite-secret-store.js';
 import { getOAuthLoginStatus, startOAuthLogin, submitOAuthCode } from './oauth-login.js';
 import { removeProviderConnection } from './provider-cleanup.js';
+import { normalizeProvider } from './provider-alias.js';
 import { generateText as generateTextRoot } from './generate-text.js';
 import { streamText as streamTextRoot } from './stream-text.js';
 import {
@@ -18,6 +19,8 @@ import {
   transcribeAudio as transcribeAudioRoot,
   uploadFile as uploadFileRoot,
 } from './media.js';
+import { generateLocalArtifact as generateLocalArtifactRoot } from './local-artifact.js';
+import { runAgentWorkflow as runAgentWorkflowRoot } from './agent-workflow.js';
 import type {
   AiConnectors,
   AiConnectorsOptions,
@@ -26,6 +29,8 @@ import type {
   DisconnectResult,
   GenerateImageInput,
   GenerateImageResult,
+  GenerateLocalArtifactInput,
+  GenerateLocalArtifactResult,
   GenerateMediaTextInput,
   GenerateSpeechInput,
   GenerateSpeechResult,
@@ -35,6 +40,8 @@ import type {
   GenerateVideoInput,
   GenerateVideoResult,
   LoginSession,
+  RunAgentWorkflowInput,
+  RunAgentWorkflowResult,
   ProviderSlug,
   ProviderStatus,
   ProviderStore,
@@ -290,17 +297,35 @@ export function createAiConnectors(options: AiConnectorsOptions = {}): AiConnect
 
   async function generateImage(input: GenerateImageInput): Promise<GenerateImageResult> {
     const provider = input.provider || (await resolveDefaultProvider(store, defaultProvider));
-    return generateImageRoot(await withStoredAuth({ ...input, provider }));
+    return generateImageRoot(await withStoredAuth({ ...input, provider, cwd: input.cwd || cwd }));
   }
 
   async function generateVideo(input: GenerateVideoInput): Promise<GenerateVideoResult> {
     const provider = input.provider || (await resolveDefaultProvider(store, defaultProvider));
-    return generateVideoRoot(await withStoredAuth({ ...input, provider }));
+    return generateVideoRoot(await withStoredAuth({ ...input, provider, cwd: input.cwd || cwd }));
   }
 
   async function generateSpeech(input: GenerateSpeechInput): Promise<GenerateSpeechResult> {
     const provider = input.provider || (await resolveDefaultProvider(store, defaultProvider));
-    return generateSpeechRoot(await withStoredAuth({ ...input, provider }));
+    return generateSpeechRoot(await withStoredAuth({ ...input, provider, cwd: input.cwd || cwd }));
+  }
+
+  async function generateLocalArtifact(input: GenerateLocalArtifactInput): Promise<GenerateLocalArtifactResult> {
+    const provider = input.provider || (await resolveDefaultProvider(store, defaultProvider));
+    return generateLocalArtifactRoot(await withStoredAuth({ ...input, provider, cwd: input.cwd || cwd, env }));
+  }
+
+  async function runAgentWorkflow(input: RunAgentWorkflowInput): Promise<RunAgentWorkflowResult> {
+    const provider = input.provider ? normalizeProvider(input.provider) : await resolveDefaultProvider(store, defaultProvider);
+    return runAgentWorkflowRoot(
+      await withStoredAuth({
+        ...input,
+        provider,
+        cwd: input.cwd || cwd,
+        env,
+        tools: input.tools || options.tools,
+      })
+    );
   }
 
   async function transcribeAudio(input: TranscribeAudioInput): Promise<TranscribeAudioResult> {
@@ -337,6 +362,8 @@ export function createAiConnectors(options: AiConnectorsOptions = {}): AiConnect
     generateImage,
     generateVideo,
     generateSpeech,
+    generateLocalArtifact,
+    runAgentWorkflow,
     transcribeAudio,
     setDefaultProvider,
     runInteractiveLogin,

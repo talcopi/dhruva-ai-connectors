@@ -1,4 +1,15 @@
-import type { ConnectAIInput, ConnectAIResult, DisconnectResult, LogoutAIInput, ProviderInput, ProviderSlug, UseAIInput, UseAIResult } from './types.js';
+import type {
+  ConnectAIInput,
+  ConnectAIResult,
+  DisconnectResult,
+  LogoutAIInput,
+  ProviderInput,
+  ProviderSlug,
+  RunAgentWorkflowInput,
+  RunAgentWorkflowResult,
+  UseAIInput,
+  UseAIResult,
+} from './types.js';
 
 type BrowserWindow = {
   open?: (url?: string, target?: string, features?: string) => { closed?: boolean; location?: { href: string }; close?: () => void } | null;
@@ -120,6 +131,22 @@ export async function logoutAI(input: LogoutAIInput): Promise<DisconnectResult> 
   const data = await response.json();
   if (!response.ok) throw new Error(data?.error || `logoutAI failed with HTTP ${response.status}`);
   return data;
+}
+
+export async function runAgentWorkflow(input: Omit<RunAgentWorkflowInput, 'tools'> & { endpoint?: string }): Promise<RunAgentWorkflowResult> {
+  const endpoint = input.endpoint || '/api/ai/use';
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'workflow', input }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error || `runAgentWorkflow failed with HTTP ${response.status}`);
+  return data;
+}
+
+export async function runAITools(input: Omit<RunAgentWorkflowInput, 'tools'> & { endpoint?: string }): Promise<RunAgentWorkflowResult> {
+  return runAgentWorkflow(input);
 }
 
 export type * from './types.js';

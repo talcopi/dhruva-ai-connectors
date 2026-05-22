@@ -4,12 +4,14 @@ import type {
   ConnectProviderOptions,
   ConnectAIInput,
   GenerateImageInput,
+  GenerateLocalArtifactInput,
   GenerateMediaTextInput,
   GenerateSpeechInput,
   GenerateTextInput,
   GenerateVideoInput,
   ProviderInput,
   LogoutAIInput,
+  RunAgentWorkflowInput,
   TranscribeAudioInput,
   UseAIInput,
   UploadFileInput,
@@ -18,6 +20,7 @@ import type {
 export { connectAI } from './connect-ai.js';
 export { logoutAI } from './logout-ai.js';
 export { useAI } from './use-ai.js';
+export { generateLocalArtifact, LOCAL_ARTIFACT_SKILLS } from './local-artifact.js';
 export { createAiConnectors, getDefaultConnectors } from './create-ai-connectors.js';
 export { normalizeProvider } from './provider-alias.js';
 export { runtimeStatus, runtimeProviderStatus, packageVersion } from './runtime.js';
@@ -103,8 +106,20 @@ export async function generateSpeech(input: GenerateSpeechInput) {
   return getDefaultConnectors().generateSpeech(input);
 }
 
+export async function generateLocalFile(input: GenerateLocalArtifactInput) {
+  return getDefaultConnectors().generateLocalArtifact(input);
+}
+
+export async function runAgentWorkflow(input: RunAgentWorkflowInput) {
+  return getDefaultConnectors().runAgentWorkflow(input);
+}
+
+export async function runAITools(input: RunAgentWorkflowInput) {
+  return runAgentWorkflow(input);
+}
+
 export async function transcribeAudio(input: TranscribeAudioInput) {
   return getDefaultConnectors().transcribeAudio(input);
 }
 
-export type { ConnectAIInput, LogoutAIInput, UseAIInput };
+export type { ConnectAIInput, LogoutAIInput, RunAgentWorkflowInput, UseAIInput };
