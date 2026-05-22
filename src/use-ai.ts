@@ -16,6 +16,7 @@ export async function useAI(input: UseAIInput): Promise<UseAIResult> {
       model: input.model,
       auth: input.auth,
       timeoutMs: input.timeoutMs,
+      cwd: input.cwd,
     });
     return { provider, output, model: result.model, text: result.text, raw: result.raw };
   }
@@ -150,6 +151,7 @@ async function documentText(input: UseAIInput, connectors: ReturnType<typeof cre
     model: input.model,
     auth: input.auth,
     timeoutMs: input.timeoutMs,
+    cwd: input.cwd,
   });
   return result.text;
 }

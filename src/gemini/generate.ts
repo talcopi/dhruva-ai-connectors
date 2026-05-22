@@ -25,7 +25,10 @@ export async function generateGeminiText(input: GenerateTextInput): Promise<Gene
     {
       cwd: input.cwd,
       env: geminiCliEnv({
-        GEMINI_API_KEY: input.auth?.apiKey || process.env.GEMINI_API_KEY,
+        cwd: input.cwd,
+        extra: {
+          GEMINI_API_KEY: input.auth?.apiKey || process.env.GEMINI_API_KEY,
+        },
       }),
       timeoutMs: input.timeoutMs ?? 120000,
     }
@@ -42,7 +45,7 @@ export async function generateGeminiText(input: GenerateTextInput): Promise<Gene
 
   const json = parseJsonMaybe(result.stdout);
   const text = extractTextFromKnownJson(json) || result.stdout.trim();
-  const status = await readGeminiStatus().catch(() => null);
+  const status = await readGeminiStatus(input.cwd).catch(() => null);
   return {
     provider: 'gemini',
     transport: 'cli',

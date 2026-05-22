@@ -277,12 +277,12 @@ export function createAiConnectors(options: AiConnectorsOptions = {}): AiConnect
 
   async function generateText(input: GenerateTextInput): Promise<GenerateTextResult> {
     const provider = input.provider || (await resolveDefaultProvider(store, defaultProvider));
-    return generateTextRoot(await withStoredAuth({ ...input, provider }));
+    return generateTextRoot(await withStoredAuth({ ...input, provider, cwd: input.cwd || cwd }));
   }
 
   async function* streamText(input: GenerateTextInput): AsyncIterable<GenerateTextChunk> {
     const provider = input.provider || (await resolveDefaultProvider(store, defaultProvider));
-    yield* streamTextRoot(await withStoredAuth({ ...input, provider }));
+    yield* streamTextRoot(await withStoredAuth({ ...input, provider, cwd: input.cwd || cwd }));
   }
 
   async function generateTextFromMedia(input: GenerateMediaTextInput): Promise<GenerateTextResult> {
