@@ -3,6 +3,14 @@
   "version": "0.1.6",
   "description": "Multi-provider AI connector package for Codex, Claude, Gemini, and Grok.",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/talcopi/dhruva-ai-connectors.git"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -42,7 +50,8 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "pack:check": "npm pack --dry-run"
+    "pack:check": "npm pack --dry-run",
+    "release:check": "npm run typecheck && npm test && npm run lint && npm run build && npm run pack:check"
   },
   "keywords": [
     "ai",
