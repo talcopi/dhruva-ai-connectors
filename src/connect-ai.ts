@@ -16,7 +16,7 @@ export async function connectAI(input: ConnectAIInput): Promise<ConnectAIResult>
   const provider = normalizeProvider(input.provider);
   if (isBrowserRuntime() && input.endpoint) return connectFromBrowser(provider, input);
   const connectors = createAiConnectors(input);
-  const authKind = input.authKind || (provider === 'grok' ? 'cli_browser' : 'cli_oauth');
+  const authKind = input.authKind || defaultAuthKind(provider, input);
   const session = await connectors.connectProvider(provider, { ...input, authKind });
   const result = toConnectResult(provider, session);
   if (input.openBrowser !== false && result.redirectUrl) await openUrl(result.redirectUrl).catch(() => false);
@@ -24,6 +24,13 @@ export async function connectAI(input: ConnectAIInput): Promise<ConnectAIResult>
     return pollNodeStatus(connectors, provider, result, input);
   }
   return result;
+}
+
+function defaultAuthKind(provider: ProviderSlug, input: ConnectAIInput): LoginSession['authKind'] {
+  if (provider !== 'grok') return 'cli_oauth';
+  const env = input.env || process.env;
+  if (input.apiKey || env.XAI_API_KEY || env.GROK_CODE_XAI_API_KEY) return 'api_key';
+  return 'cli_browser';
 }
 
 async function connectFromBrowser(provider: ProviderSlug, input: ConnectAIInput): Promise<ConnectAIResult> {

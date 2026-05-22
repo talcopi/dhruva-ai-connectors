@@ -289,9 +289,35 @@ const doc = await useAI({
 npm i @ignitedaibusiness/ai-connectors
 ```
 
+That is the only package install command your user needs. Do not install SQLite, `better-sqlite3`, Codex CLI, Claude Code, or Gemini CLI separately for this package. They are normal package dependencies and npm installs them automatically.
+
 This package targets Node.js `>=20`. React/browser bundles use the package's browser export, which forwards `connectAI()` and `useAI()` to your API route. Provider CLIs and SQL storage still run server-side.
 
+SQLite is embedded through the npm dependency. On first use the package automatically creates:
+
+```text
+.hru-ai/providers.sqlite
+.hru-ai/secret.key
+```
+
+The app developer only calls the functions:
+
+```js
+import { connectAI, useAI } from '@ignitedaibusiness/ai-connectors';
+
+await connectAI({ provider: 'codex', endpoint: '/api/ai' });
+
+const result = await useAI({
+  provider: 'codex',
+  endpoint: '/api/ai',
+  output: 'text',
+  prompt: 'Write a short reply.',
+});
+```
+
 Codex, Claude, and Gemini text generation use their provider CLIs. The package includes those CLIs as dependencies, but globally installed CLIs also work.
+
+Grok does not require a separate CLI for API/media mode. Set `XAI_API_KEY` on the server and `connectAI({ provider: "grok" })` will use encrypted API-key storage automatically.
 
 ## 1. Connect Provider OAuth
 

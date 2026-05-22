@@ -3,10 +3,12 @@ import path from 'node:path';
 import { configuredAuthKinds, modelFromEnv, providerHome } from './env.js';
 import { PROVIDERS, PROVIDER_SLUGS } from './providers.js';
 import { findExecutable } from './process/run-cli.js';
+import { consumerRootFromPackageRoot, packageRoot } from './package-root.js';
 import type { AiConnectorsOptions, ProviderSlug, RuntimeProviderStatus, RuntimeStatus } from './types.js';
 
 function packageRoots(cwd: string): string[] {
-  return [...new Set([cwd, process.cwd()])];
+  const ownPackageRoot = packageRoot();
+  return [...new Set([cwd, process.cwd(), ownPackageRoot, consumerRootFromPackageRoot(ownPackageRoot)].filter(Boolean) as string[])];
 }
 
 export function packageVersion(packageName: string | null, cwd = process.cwd()): string {

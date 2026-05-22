@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { ChildProcess } from 'node:child_process';
 import type { CliResult, RunCliOptions, SpawnCliOptions } from '../types.js';
 import { sanitizedCliEnv } from '../env.js';
+import { consumerRootFromPackageRoot, packageRoot } from '../package-root.js';
 
 export function localBinPath(name: string, cwd = process.cwd()): string {
   const suffix = process.platform === 'win32' ? '.cmd' : '';
@@ -12,10 +13,14 @@ export function localBinPath(name: string, cwd = process.cwd()): string {
 
 export function findExecutable(name: string, cwd = process.cwd(), env: NodeJS.ProcessEnv = process.env): string | null {
   const suffix = process.platform === 'win32' ? '.cmd' : '';
-  const candidates = [
+  const ownPackageRoot = packageRoot();
+  const consumerRoot = consumerRootFromPackageRoot(ownPackageRoot);
+  const candidates = unique([
     localBinPath(name, cwd),
     localBinPath(name, process.cwd()),
-  ];
+    localBinPath(name, ownPackageRoot),
+    ...(consumerRoot ? [localBinPath(name, consumerRoot)] : []),
+  ]);
 
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) return candidate;
@@ -28,6 +33,10 @@ export function findExecutable(name: string, cwd = process.cwd(), env: NodeJS.Pr
   }
 
   return null;
+}
+
+function unique(values: string[]): string[] {
+  return [...new Set(values)];
 }
 
 export function localBinaryExists(name: string, cwd = process.cwd(), env: NodeJS.ProcessEnv = process.env): boolean {

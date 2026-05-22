@@ -43,6 +43,31 @@ describe('high-level API', () => {
     }
   });
 
+  it('connectAI uses Grok API mode automatically when XAI_API_KEY is configured', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'hru-ai-grok-env-'));
+    try {
+      const dbPath = path.join(dir, 'providers.sqlite');
+      const store = new SQLiteProviderStore(dbPath);
+      const secretStore = new SQLiteSecretStore(dbPath, { encryptionKey: 'test-key' });
+
+      const result = await connectAI({
+        provider: 'grok',
+        setDefault: true,
+        cwd: dir,
+        env: { XAI_API_KEY: 'xai-env-secret' },
+        store,
+        secretStore,
+      });
+
+      expect(result).toMatchObject({ provider: 'grok', status: 'connected', authKind: 'api_key', connected: true });
+      expect(await secretStore.get('provider:grok:api_key')).toBe('xai-env-secret');
+      store.close();
+      secretStore.close();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('useAI creates CSV and PDF assets without provider calls when local content is supplied', async () => {
     const csv = await useAI({
       provider: 'codex',
